@@ -1,3 +1,4 @@
+import type { MinoType, KickTable, MinoState, MinoMatrix, MinoRotation, InitialSystemOption, GameAction } from './types.ts';
 import './style.css'
 
 /**
@@ -11,13 +12,13 @@ const BOARD_HIDDEN_HEIGHT = 20;
 const BOARD_TOTAL_HEIGHT = BOARD_VISIBLE_HEIGHT + BOARD_HIDDEN_HEIGHT;
 
 const MINOS = {
-  'I': { color: '#00FFFF', matrix: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
-  'J': { color: '#0000FF', matrix: [[1,0,0],[1,1,1],[0,0,0]] },
-  'L': { color: '#FFA500', matrix: [[0,0,1],[1,1,1],[0,0,0]] },
-  'O': { color: '#FFFF00', matrix: [[1,1],[1,1]] },
-  'S': { color: '#00FF00', matrix: [[0,1,1],[1,1,0],[0,0,0]] },
-  'T': { color: '#800080', matrix: [[0,1,0],[1,1,1],[0,0,0]] },
-  'Z': { color: '#FF0000', matrix: [[1,1,0],[0,1,1],[0,0,0]] }
+  'I': { color: '#00FFFF', matrix: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]] },
+  'J': { color: '#0000FF', matrix: [[1, 0, 0], [1, 1, 1], [0, 0, 0]] },
+  'L': { color: '#FFA500', matrix: [[0, 0, 1], [1, 1, 1], [0, 0, 0]] },
+  'O': { color: '#FFFF00', matrix: [[1, 1], [1, 1]] },
+  'S': { color: '#00FF00', matrix: [[0, 1, 1], [1, 1, 0], [0, 0, 0]] },
+  'T': { color: '#800080', matrix: [[0, 1, 0], [1, 1, 1], [0, 0, 0]] },
+  'Z': { color: '#FF0000', matrix: [[1, 1, 0], [0, 1, 1], [0, 0, 0]] },
 };
 
 const F_TO_MS = 1000 / 60;
@@ -27,42 +28,35 @@ const F_TO_MS = 1000 / 60;
  * モジュール1: KickTable (キックテーブル)
  * ==========================================
  */
-class KickTable {
-  getKicks(minoType, fromState, toState) { return [[0, 0]]; }
-}
+class SRSKickTable implements KickTable {
+  kicksJLSTZ: Record<string, number[][]> = {
+    "0->1": [[ 0, 0], [-1, 0], [-1, 1], [ 0,-2], [-1,-2]],
+    "1->0": [[ 0, 0], [ 1, 0], [ 1,-1], [ 0, 2], [ 1, 2]],
+    "1->2": [[ 0, 0], [ 1, 0], [ 1,-1], [ 0, 2], [ 1, 2]],
+    "2->1": [[ 0, 0], [-1, 0], [-1, 1], [ 0,-2], [-1,-2]],
+    "2->3": [[ 0, 0], [ 1, 0], [ 1, 1], [ 0,-2], [ 1,-2]],
+    "3->2": [[ 0, 0], [-1, 0], [-1,-1], [ 0, 2], [-1, 2]],
+    "3->0": [[ 0, 0], [-1, 0], [-1,-1], [ 0, 2], [-1, 2]],
+    "0->3": [[ 0, 0], [ 1, 0], [ 1, 1], [ 0,-2], [ 1,-2]]
+  };
+  kicksI: Record<string, number[][]> = {
+    "0->1": [[ 0, 0], [-2, 0], [ 1, 0], [-2,-1], [ 1, 2]],
+    "1->0": [[ 0, 0], [ 2, 0], [-1, 0], [ 2, 1], [-1,-2]],
+    "1->2": [[ 0, 0], [-1, 0], [ 2, 0], [-1, 2], [ 2,-1]],
+    "2->1": [[ 0, 0], [ 1, 0], [-2, 0], [ 1,-2], [-2, 1]],
+    "2->3": [[ 0, 0], [ 2, 0], [-1, 0], [ 2, 1], [-1,-2]],
+    "3->2": [[ 0, 0], [-2, 0], [ 1, 0], [-2,-1], [ 1, 2]],
+    "3->0": [[ 0, 0], [ 1, 0], [-2, 0], [ 1,-2], [-2, 1]],
+    "0->3": [[ 0, 0], [-1, 0], [ 2, 0], [-1, 2], [ 2,-1]]
+  };
+  kicks180: Record<string, number[][]> = {
+    "0->2": [[0,0], [0,1], [0,-1], [1,0], [-1,0]],
+    "1->3": [[0,0], [1,0], [-1,0], [0,1], [0,-1]],
+    "2->0": [[0,0], [0,-1], [0,1], [-1,0], [1,0]],
+    "3->1": [[0,0], [-1,0], [1,0], [0,-1], [0,1]]
+  };
 
-class SRSKickTable extends KickTable {
-  constructor() {
-    super();
-    this.kicksJLSTZ = {
-      "0->1": [[ 0, 0], [-1, 0], [-1, 1], [ 0,-2], [-1,-2]],
-      "1->0": [[ 0, 0], [ 1, 0], [ 1,-1], [ 0, 2], [ 1, 2]],
-      "1->2": [[ 0, 0], [ 1, 0], [ 1,-1], [ 0, 2], [ 1, 2]],
-      "2->1": [[ 0, 0], [-1, 0], [-1, 1], [ 0,-2], [-1,-2]],
-      "2->3": [[ 0, 0], [ 1, 0], [ 1, 1], [ 0,-2], [ 1,-2]],
-      "3->2": [[ 0, 0], [-1, 0], [-1,-1], [ 0, 2], [-1, 2]],
-      "3->0": [[ 0, 0], [-1, 0], [-1,-1], [ 0, 2], [-1, 2]],
-      "0->3": [[ 0, 0], [ 1, 0], [ 1, 1], [ 0,-2], [ 1,-2]]
-    };
-    this.kicksI = {
-      "0->1": [[ 0, 0], [-2, 0], [ 1, 0], [-2,-1], [ 1, 2]],
-      "1->0": [[ 0, 0], [ 2, 0], [-1, 0], [ 2, 1], [-1,-2]],
-      "1->2": [[ 0, 0], [-1, 0], [ 2, 0], [-1, 2], [ 2,-1]],
-      "2->1": [[ 0, 0], [ 1, 0], [-2, 0], [ 1,-2], [-2, 1]],
-      "2->3": [[ 0, 0], [ 2, 0], [-1, 0], [ 2, 1], [-1,-2]],
-      "3->2": [[ 0, 0], [-2, 0], [ 1, 0], [-2,-1], [ 1, 2]],
-      "3->0": [[ 0, 0], [ 1, 0], [-2, 0], [ 1,-2], [-2, 1]],
-      "0->3": [[ 0, 0], [-1, 0], [ 2, 0], [-1, 2], [ 2,-1]]
-    };
-    this.kicks180 = {
-      "0->2": [[0,0], [0,1], [0,-1], [1,0], [-1,0]],
-      "1->3": [[0,0], [1,0], [-1,0], [0,1], [0,-1]],
-      "2->0": [[0,0], [0,-1], [0,1], [-1,0], [1,0]],
-      "3->1": [[0,0], [-1,0], [1,0], [0,-1], [0,1]]
-    };
-  }
-
-  getKicks(minoType, fromState, toState) {
+  getKicks(minoType: MinoType, fromState: MinoState, toState: MinoState): number[][] {
     const key = `${fromState}->${toState}`;
     if (Math.abs(fromState - toState) === 2) {
       return this.kicks180[key] || [[0, 0]];
@@ -74,23 +68,20 @@ class SRSKickTable extends KickTable {
 }
 
 class SRSPlusKickTable extends SRSKickTable {
-  constructor() {
-    super();
-    this.kicks180_I = {
-      "0->2": [[ 0, 0], [-1, 0], [-2, 0], [ 1, 0], [ 2, 0], [ 0, 1]],
-      "1->3": [[ 0, 0], [ 0, 1], [ 0, 2], [ 0,-1], [ 0,-2], [-1, 0]],
-      "2->0": [[ 0, 0], [ 1, 0], [ 2, 0], [-1, 0], [-2, 0], [ 0,-1]],
-      "3->1": [[ 0, 0], [ 0, 1], [ 0, 2], [ 0,-1], [ 0,-2], [ 1, 0]]
-    };
-    this.kicks180_T = {
-      "0->2": [[ 0, 0], [ 0, 1], [ 1, 1], [-1, 1], [ 1, 0], [-1, 0]],
-      "1->3": [[ 0, 0], [ 1, 0], [ 1, 2], [ 1, 1], [ 0, 2], [ 0, 1]],
-      "2->0": [[ 0, 0], [ 0,-1], [-1,-1], [ 1,-1], [-1, 0], [ 1, 0]],
-      "3->1": [[ 0, 0], [-1, 0], [-1, 2], [-1, 1], [ 0, 2], [ 0, 1]]
-    };
-  }
+  kicks180_I: Record<string, number[][]> = {
+    "0->2": [[ 0, 0], [-1, 0], [-2, 0], [ 1, 0], [ 2, 0], [ 0, 1]],
+    "1->3": [[ 0, 0], [ 0, 1], [ 0, 2], [ 0,-1], [ 0,-2], [-1, 0]],
+    "2->0": [[ 0, 0], [ 1, 0], [ 2, 0], [-1, 0], [-2, 0], [ 0,-1]],
+    "3->1": [[ 0, 0], [ 0, 1], [ 0, 2], [ 0,-1], [ 0,-2], [ 1, 0]]
+  };
+  kicks180_T: Record<string, number[][]> = {
+    "0->2": [[ 0, 0], [ 0, 1], [ 1, 1], [-1, 1], [ 1, 0], [-1, 0]],
+    "1->3": [[ 0, 0], [ 1, 0], [ 1, 2], [ 1, 1], [ 0, 2], [ 0, 1]],
+    "2->0": [[ 0, 0], [ 0,-1], [-1,-1], [ 1,-1], [-1, 0], [ 1, 0]],
+    "3->1": [[ 0, 0], [-1, 0], [-1, 2], [-1, 1], [ 0, 2], [ 0, 1]]
+  };
 
-  getKicks(minoType, fromState, toState) {
+  getKicks(minoType: MinoType, fromState: MinoState, toState: MinoState): number[][] {
     const key = `${fromState}->${toState}`;
     if (Math.abs(fromState - toState) === 2) {
       if (minoType === 'I') return this.kicks180_I[key] || [[0, 0]];
@@ -107,17 +98,21 @@ class SRSPlusKickTable extends SRSKickTable {
  * ==========================================
  */
 class Tetromino {
-  constructor(type) {
+  type: MinoType;
+  matrix: MinoMatrix;
+  state: MinoState;
+
+  constructor(type: MinoType) {
     this.type = type;
     this.matrix = this.cloneMatrix(MINOS[type].matrix);
     this.state = 0;
   }
 
-  cloneMatrix(matrix) {
+  cloneMatrix(matrix: MinoMatrix) {
     return matrix.map(row => [...row]);
   }
 
-  getRotatedMatrix(direction) {
+  getRotatedMatrix(direction: MinoRotation) {
     const n = this.matrix.length;
     let newMatrix = Array.from({length: n}, () => Array(n).fill(0));
     for (let r = 0; r < n; r++) {
@@ -141,7 +136,11 @@ class Tetromino {
  * ==========================================
  */
 class Board {
-  constructor(width, height) {
+  width: number;
+  height: number;
+  grid: (MinoType | null)[][];
+
+  constructor(width: number, height: number) {
     this.width = width;
     this.height = height;
     this.grid = this.createEmptyGrid();
@@ -155,7 +154,7 @@ class Board {
     this.grid = this.createEmptyGrid();
   }
 
-  collides(matrix, x, y) {
+  collides(matrix: MinoMatrix, x: number, y: number) {
     const n = matrix.length;
     for (let r = 0; r < n; r++) {
       for (let c = 0; c < n; c++) {
@@ -174,7 +173,7 @@ class Board {
     return false;
   }
 
-  merge(matrix, x, y, type) {
+  merge(matrix: MinoMatrix, x: number, y: number, type: MinoType) {
     const n = matrix.length;
     for (let r = 0; r < n; r++) {
       for (let c = 0; c < n; c++) {
@@ -209,6 +208,64 @@ class Board {
  * ==========================================
  */
 class GameCore {
+  kickTable: KickTable;
+  board: Board;
+
+  state!: string;
+  score!: number;
+  lines!: number;
+  level!: number;
+  comboCount!: number;
+  difficultClearCount!: number;
+
+  piecesPlaced!: number;
+  keyPresses!: number;
+  playTime!: number;
+  totalAttackSent!: number;
+
+  nextQueue!: MinoType[];
+  holdType!: MinoType | null; // FIXME
+  canHold!: boolean;
+
+  currentMino!: Tetromino;
+  minoX!: number;
+  minoY!: number;
+
+  fallTimer!: number;
+  lockTimer!: number;
+  lockResets!: number;
+  lowestY!: number;
+
+  gravityDelay!: number;
+  lockDelay!: number;
+
+  actionMessage!: string;
+  comboMessage!: string;
+  lastAttackMessage!: string;
+  actionTimer!: number;
+
+  lastActionWasRotation!: boolean;
+  lastKickIndex!: number; // FIXME ?
+  isSoftDropping!: boolean;
+
+  config!: {
+    arr: number,
+    das: number,
+    dcd: number,
+    sdf: number,
+    preventAccident: boolean,
+    cancelDasOnDir: boolean,
+    preferMovement: boolean,
+    irs: InitialSystemOption,
+    ihs: InitialSystemOption,
+  };
+
+  dcdTimer!: number;
+  accidentalHardDropPreventTimer!: number;
+
+  bufferedHold!: boolean;
+  bufferedRotation!: MinoRotation | null; // FIXME
+
   constructor() {
     this.kickTable = new SRSPlusKickTable();
     this.board = new Board(BOARD_WIDTH, BOARD_TOTAL_HEIGHT);
@@ -233,7 +290,7 @@ class GameCore {
     this.holdType = null;
     this.canHold = true;
 
-    this.currentMino = null;
+    this.currentMino = null as any as Tetromino; // HACK
     this.minoX = 0;
     this.minoY = 0;
 
@@ -263,7 +320,7 @@ class GameCore {
       cancelDasOnDir: false,
       preferMovement: true,
       irs: 'TAP',
-      ihs: 'TAP'
+      ihs: 'TAP',
     };
 
     this.dcdTimer = 0;
@@ -282,28 +339,28 @@ class GameCore {
   }
 
   updateConfigFromUI() {
-    const arrVal = parseFloat(document.getElementById('cfgARR').value);
-    const dasVal = parseFloat(document.getElementById('cfgDAS').value);
-    const dcdVal = parseFloat(document.getElementById('cfgDCD').value);
-    const sdfVal = parseFloat(document.getElementById('cfgSDF').value);
+    const arrVal = parseFloat((document.getElementById('cfgARR') as HTMLInputElement).value);
+    const dasVal = parseFloat((document.getElementById('cfgDAS') as HTMLInputElement).value);
+    const dcdVal = parseFloat((document.getElementById('cfgDCD') as HTMLInputElement).value);
+    const sdfVal = parseFloat((document.getElementById('cfgSDF') as HTMLInputElement).value);
 
-    document.getElementById('arrVal').textContent = arrVal === 0 ? "0.0F (ワープ)" : `${arrVal.toFixed(1)}F (${Math.round(arrVal * F_TO_MS)}ms)`;
-    document.getElementById('dasVal').textContent = `${dasVal.toFixed(1)}F (${Math.round(dasVal * F_TO_MS)}ms)`;
-    document.getElementById('dcdVal').textContent = dcdVal === 0 ? "0.0F (なし)" : `${dcdVal.toFixed(1)}F (${Math.round(dcdVal * F_TO_MS)}ms)`;
-    document.getElementById('sdfVal').textContent = sdfVal > 40 ? "INF (無限)" : `${sdfVal}x`;
+    (document.getElementById('arrVal') as HTMLSpanElement).textContent = arrVal === 0 ? "0.0F (ワープ)" : `${arrVal.toFixed(1)}F (${Math.round(arrVal * F_TO_MS)}ms)`;
+    (document.getElementById('dasVal') as HTMLSpanElement).textContent = `${dasVal.toFixed(1)}F (${Math.round(dasVal * F_TO_MS)}ms)`;
+    (document.getElementById('dcdVal') as HTMLSpanElement).textContent = dcdVal === 0 ? "0.0F (なし)" : `${dcdVal.toFixed(1)}F (${Math.round(dcdVal * F_TO_MS)}ms)`;
+    (document.getElementById('sdfVal') as HTMLSpanElement).textContent = sdfVal > 40 ? "INF (無限)" : `${sdfVal}x`;
 
     this.config.arr = arrVal * F_TO_MS;
     this.config.das = dasVal * F_TO_MS;
     this.config.dcd = dcdVal * F_TO_MS;
     this.config.sdf = sdfVal > 40 ? Infinity : sdfVal;
 
-    this.config.preventAccident = document.getElementById('cfgPreventAccident').checked;
-    this.config.cancelDasOnDir = document.getElementById('cfgCancelDasOnDir').checked;
-    this.config.preferMovement = document.getElementById('cfgPreferMovement').checked;
-    this.config.irs = document.getElementById('cfgIRS').value;
-    this.config.ihs = document.getElementById('cfgIHS').value;
+    this.config.preventAccident = (document.getElementById('cfgPreventAccident') as HTMLInputElement).checked;
+    this.config.cancelDasOnDir = (document.getElementById('cfgCancelDasOnDir') as HTMLInputElement).checked;
+    this.config.preferMovement = (document.getElementById('cfgPreferMovement') as HTMLInputElement).checked;
+    this.config.irs = (document.getElementById('cfgIRS') as HTMLSelectElement).value as InitialSystemOption;
+    this.config.ihs = (document.getElementById('cfgIHS') as HTMLSelectElement).value as InitialSystemOption;
 
-    const kickTableType = document.getElementById('cfgKickTable').value;
+    const kickTableType = (document.getElementById('cfgKickTable') as HTMLSelectElement).value;
     if (kickTableType === 'SRS+' && !(this.kickTable instanceof SRSPlusKickTable)) {
       this.kickTable = new SRSPlusKickTable();
     } else if (kickTableType === 'SRS' && this.kickTable instanceof SRSPlusKickTable) {
@@ -325,7 +382,7 @@ class GameCore {
       const j = Math.floor(Math.random() * (i + 1));
       [types[i], types[j]] = [types[j], types[i]];
     }
-    this.nextQueue.push(...types);
+    this.nextQueue.push(...types as MinoType[]);
   }
 
   spawnPiece() {
@@ -337,7 +394,7 @@ class GameCore {
     this.bufferedHold = false;
 
     const nextType = this.nextQueue.shift();
-    this.currentMino = new Tetromino(nextType);
+    this.currentMino = new Tetromino(nextType as MinoType);
 
     if (this.nextQueue.length <= 7) {
       this.fillNextQueue();
@@ -390,7 +447,7 @@ class GameCore {
     this.dcdTimer = this.config.dcd;
   }
 
-  update(dt) {
+  update(dt: number) {
     if (this.state !== 'PLAYING') return;
 
     this.playTime += dt / 1000;
@@ -461,7 +518,7 @@ class GameCore {
     return ghostY;
   }
 
-  handleAction(action) {
+  handleAction(action: GameAction) {
     if (this.state !== 'PLAYING') return;
     let success = false;
     let isMovement = false;
@@ -572,7 +629,7 @@ class GameCore {
     }
   }
 
-  handleRotate(direction) {
+  handleRotate(direction: MinoRotation) {
     if (this.currentMino.type === 'O') return false;
 
     let toState = this.currentMino.state;
@@ -581,7 +638,7 @@ class GameCore {
     else if (direction === '180') toState = (toState + 2) % 4;
 
     const newMatrix = this.currentMino.getRotatedMatrix(direction);
-    const kicks = this.kickTable.getKicks(this.currentMino.type, this.currentMino.state, toState);
+    const kicks = this.kickTable.getKicks(this.currentMino.type, this.currentMino.state, toState as MinoState);
 
     for (let i = 0; i < kicks.length; i++) {
       const [dx, dy] = kicks[i];
@@ -592,7 +649,7 @@ class GameCore {
         this.minoX = testX;
         this.minoY = testY;
         this.currentMino.matrix = newMatrix;
-        this.currentMino.state = toState;
+        this.currentMino.state = toState as MinoState;
         this.lastActionWasRotation = true;
         this.lastKickIndex = i;
         return true;
@@ -899,14 +956,20 @@ const KEY_BINDINGS = {
   'KeyC': 'Hold',
   'KeyR': 'Reset',
   'KeyP': 'Pause'
-};
+} as const satisfies Record<string, GameAction>;
 
 class InputManager {
-  constructor(gameCore) {
+  core: GameCore;
+  keys: Partial<Record<typeof KEY_BINDINGS[keyof typeof KEY_BINDINGS], boolean>>;
+  timers: Partial<Record<typeof KEY_BINDINGS[keyof typeof KEY_BINDINGS], number>>;
+  lastMoveKey: 'MoveLeft' | 'MoveRight' | null;
+  dasCharged: Map<typeof KEY_BINDINGS[keyof typeof KEY_BINDINGS] | null, number>;
+
+  constructor(gameCore: GameCore) {
     this.core = gameCore;
     this.keys = {};
     this.timers = {};
-    this.dasCharged = {};
+    this.dasCharged = new Map();
     this.lastMoveKey = null;
 
     window.addEventListener('keydown', (e) => {
@@ -914,7 +977,7 @@ class InputManager {
         e.preventDefault();
       }
 
-      const action = KEY_BINDINGS[e.code];
+      const action = KEY_BINDINGS[e.code as keyof typeof KEY_BINDINGS]; // HACK: 次の行で確実に弾かれるからas使う
       if (action) {
         if (action === 'Reset') { this.core.start(); return; }
         if (action === 'Pause') { this.core.togglePause(); return; }
@@ -924,11 +987,11 @@ class InputManager {
           if (!this.keys[action]) {
             this.lastMoveKey = action;
             const opposite = action === 'MoveLeft' ? 'MoveRight' : 'MoveLeft';
-            this.dasCharged[opposite] = 0;
+            this.dasCharged.set(opposite, 0);
             this.timers[opposite] = 0;
 
             if (this.core.config.cancelDasOnDir) {
-              this.dasCharged[action] = 0;
+              this.dasCharged.set(action, 0);
             }
           }
         }
@@ -936,7 +999,7 @@ class InputManager {
         if (!this.keys[action]) {
           this.keys[action] = true;
           this.timers[action] = 0;
-          this.dasCharged[action] = 0;
+          this.dasCharged.set(action, 0);
 
           this.core.keyPresses++;
           this.core.handleAction(action);
@@ -945,7 +1008,7 @@ class InputManager {
     });
 
     window.addEventListener('keyup', (e) => {
-      const action = KEY_BINDINGS[e.code];
+      const action = KEY_BINDINGS[e.code as keyof typeof KEY_BINDINGS]; // HACK
       if (action) {
         this.keys[action] = false;
 
@@ -953,7 +1016,7 @@ class InputManager {
           const opposite = action === 'MoveLeft' ? 'MoveRight' : 'MoveLeft';
           if (this.keys[opposite]) {
             this.lastMoveKey = opposite;
-            this.dasCharged[opposite] = 0;
+            this.dasCharged.set(opposite, 0);
             this.timers[opposite] = 0;
           } else {
             this.lastMoveKey = null;
@@ -986,7 +1049,7 @@ class InputManager {
     }
   }
 
-  update(dt) {
+  update(dt: number) {
     if (this.core.state !== 'PLAYING') {
       this.checkBufferInputs();
       return;
@@ -998,8 +1061,8 @@ class InputManager {
     let isDASCharged = false;
 
     if (activeMoveKey && this.keys[activeMoveKey]) {
-      this.dasCharged[activeMoveKey] += dt;
-      if (this.dasCharged[activeMoveKey] >= this.core.config.das) {
+      this.dasCharged.set(activeMoveKey, this.dasCharged.get(activeMoveKey)! + dt); // FIXME: !していいのか
+      if (this.dasCharged.get(activeMoveKey) as number >= this.core.config.das) {
         isDASCharged = true;
       }
     }
@@ -1029,15 +1092,15 @@ class InputManager {
 
     if (processMovement && activeMoveKey && this.keys[activeMoveKey]) {
       if (isDASCharged) {
-        this.timers[activeMoveKey] += dt;
+        this.timers[activeMoveKey]! += dt;  // FIXME: !していいのか
 
         if (this.core.config.arr === 0) {
           while (!this.core.board.collides(this.core.currentMino.matrix, this.core.minoX + (activeMoveKey === 'MoveLeft' ? -1 : 1), this.core.minoY)) {
             this.core.handleAction(activeMoveKey);
           }
-        } else if (this.timers[activeMoveKey] >= this.core.config.arr) {
+        } else if (this.timers[activeMoveKey]! >= this.core.config.arr) {
           this.core.handleAction(activeMoveKey);
-          this.timers[activeMoveKey] -= this.core.config.arr;
+          this.timers[activeMoveKey]! -= this.core.config.arr;
         }
       }
     }
@@ -1050,26 +1113,40 @@ class InputManager {
  * ==========================================
  */
 class Renderer {
-  constructor(canvasId) {
-    this.canvas = document.getElementById(canvasId);
-    this.ctx = this.canvas.getContext('2d');
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  readonly blockSize: number;
+  readonly boardOffsetX: number;
+  readonly boardOffsetY: number;
+
+  constructor(canvasId: string) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !(canvas instanceof HTMLCanvasElement))
+      throw new Error('Could not get canvas');
+    this.canvas = canvas;
+    const ctx = canvas.getContext('2d');
+    if (!ctx)
+      throw new Error('Could not get context');
+    this.ctx = ctx;
     this.blockSize = 24;
 
     this.boardOffsetX = 120;
     this.boardOffsetY = 120;
   }
 
-  hexToRgba(hex, alpha) {
+  hexToRgba(hex: string, alpha: number) {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
-  drawBlockRaw(px, py, type, size, isGhost = false, isGray = false) {
-    let color = MINOS[type].color;
-    if (isGray) {
+  drawBlockRaw(px: number, py: number, type: MinoType | null, size: number, isGhost = false, isGray = false) {
+    let color: string;
+    if (isGray || type === null) {
       color = '#475569';
+    } else {
+      color = MINOS[type].color;
     }
 
     if (isGhost) {
@@ -1091,13 +1168,13 @@ class Renderer {
     }
   }
 
-  drawGridBlock(x, y, type, isGhost = false) {
+  drawGridBlock(x: number, y: number, type: MinoType | null, isGhost = false) {
     const px = this.boardOffsetX + x * this.blockSize;
     const py = this.boardOffsetY + y * this.blockSize;
     this.drawBlockRaw(px, py, type, this.blockSize, isGhost);
   }
 
-  drawMiniMino(matrix, type, x, y, isGray = false) {
+  drawMiniMino(matrix: MinoMatrix, type: MinoType | null, x: number, y: number, isGray = false) {
     const n = matrix.length;
     const bSize = 13;
     const offsetX = x + (4 - n) * bSize / 2;
@@ -1112,7 +1189,7 @@ class Renderer {
     }
   }
 
-  render(core) {
+  render(core: GameCore) {
     this.ctx.fillStyle = '#060b13';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -1397,6 +1474,11 @@ class Renderer {
  * ==========================================
  */
 class GameManager {
+  core: GameCore;
+  renderer: Renderer;
+  input: InputManager;
+  lastTime: number;
+
   constructor() {
     this.core = new GameCore();
     this.renderer = new Renderer('gameCanvas');
@@ -1424,7 +1506,7 @@ class GameManager {
     requestAnimationFrame(this.loop);
   }
 
-  loop(time) {
+  loop(time: number) {
     const dt = time - this.lastTime;
     this.lastTime = time;
 
