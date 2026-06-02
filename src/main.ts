@@ -108,12 +108,12 @@ class SRSPlusKickTable implements KickTable {
 
   getKicks(minoType: MinoType, fromState: MinoState, toState: MinoState): number[][] {
     const key = `${fromState}${toState}`;
+    if (minoType === 'O') return [[0, 0]];
     if (Math.abs(fromState - toState) === 2) {
       if (minoType === 'I') return this.kicks180_I[key] || [[0, 0]];
       if (minoType === 'T') return this.kicks180_T[key] || [[0, 0]];
       return this.kicks180[key] || [[0, 0]];
     }
-    if (minoType === 'O') return [[0, 0]];
     const table = minoType === 'I' ? this.kicksI : this.kicksJLSTZ;
     return table[key] || [[0, 0]];
   }
