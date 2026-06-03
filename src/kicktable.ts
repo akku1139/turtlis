@@ -48,21 +48,7 @@ export class SRSKickTable implements KickTable {
   }
 }
 
-export class SRSPlusKickTable implements KickTable {
-  kicksJLSTZ: Record<string, number[][]> = {
-    "01": [[ 0, 0], [-1, 0], [-1, 1], [ 0,-2], [-1,-2]],
-    "02": [[ 0, 0], [ 0, 1], [-1, 1], [ 1, 1], [-1, 0], [ 1, 0]],
-    "03": [[ 0, 0], [ 1, 0], [ 1, 1], [ 0,-2], [ 1,-2]],
-    "10": [[ 0, 0], [ 1, 0], [ 1,-1], [ 0, 2], [ 1, 2]],
-    "12": [[ 0, 0], [ 1, 0], [ 1,-1], [ 0, 2], [ 1, 2]],
-    "13": [[ 0, 0], [ 1, 0], [ 1,-2], [ 1,-1], [ 0,-2], [ 0,-1]],
-    "20": [[ 0, 0], [ 0,-1], [ 1,-1], [-1,-1], [ 1, 0], [-1, 0]],
-    "21": [[ 0, 0], [-1, 0], [-1, 1], [ 0,-2], [-1,-2]],
-    "23": [[ 0, 0], [ 1, 0], [ 1, 1], [ 0,-2], [ 1,-2]],
-    "30": [[ 0, 0], [-1, 0], [-1,-1], [ 0, 2], [-1, 2]],
-    "31": [[ 0, 0], [-1, 0], [-1,-2], [-1,-1], [ 0,-2], [ 0,-1]],
-    "32": [[ 0, 0], [-1, 0], [-1,-1], [ 0, 2], [-1, 2]],
-  };
+export class SRSPlusKickTable extends SRSKickTable {
   kicksI: Record<string, number[][]> = {
     "01": [[ 0, 0], [ 1, 0], [-2, 0], [ 1,-2], [-2, 1]],
     "02": [[ 0, 0], [ 0, 1]],
@@ -77,10 +63,4 @@ export class SRSPlusKickTable implements KickTable {
     "31": [[ 0, 0], [-1, 0]],
     "32": [[ 0, 0], [ 1, 0], [-2, 0], [-2, 1], [ 1,-2]],
   };
-
-  getKicks(minoType: MinoType, fromState: MinoState, toState: MinoState): number[][] {
-    const key = `${fromState}${toState}`;
-    const table = minoType === 'I' ? this.kicksI : this.kicksJLSTZ;
-    return table[key] ?? [[0, 0]];
-  }
 }
