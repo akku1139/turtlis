@@ -6,8 +6,3 @@ export type MinoRotation = 'CW' | 'CCW' | '180';
 export type InitialSystemOption = 'OFF' | 'HOLD' | 'TAP';
 
 export type GameAction = 'MoveLeft' | 'SoftDrop' | 'HardDrop' | 'MoveRight' | 'RotateCCW' | 'RotateCW' | 'Rotate180' | 'Hold' | 'Hold' | 'Hold' | 'Reset' | 'Pause';
-
-
-export interface KickTable {
-  getKicks(minoType: MinoType, fromState: MinoState, toState: MinoState): number[][];
-}
