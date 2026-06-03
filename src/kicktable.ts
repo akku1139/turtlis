@@ -4,6 +4,13 @@ export interface KickTable {
   getKicks(minoType: MinoType, fromState: MinoState, toState: MinoState): number[][];
 }
 
+/*
+ * 0: North
+ * 1: East
+ * 2: South
+ * 3: West
+ */
+
 export class SRSKickTable implements KickTable {
   kicksJLSTZ: Record<string, number[][]> = {
     "01": [[ 0, 0], [-1, 0], [-1, 1], [ 0,-2], [-1,-2]],
