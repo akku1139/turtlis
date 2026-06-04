@@ -1,4 +1,4 @@
-import { GameManager } from './gamemanager';
+import { GameManager } from './gamemanager.ts';
 import './style.css';
 
 window.onload = () => {
