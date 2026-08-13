@@ -1,7 +1,7 @@
 import type { SearchState, Placement } from './types.ts';
 import { generatePlacements } from './movegen.ts';
 import { simulateLock, simulateHold } from './pure.ts';
-import { evaluateState } from './evaluate.ts';
+import { evaluateState, countHoles } from './evaluate.ts';
 import { getMatrix } from './pure.ts';
 import type { MinoState } from '../types.ts';
 
@@ -23,6 +23,7 @@ export function beamSearch(
   let beam: SearchState[] = [root];
   let startDepth = 0;
   const searchStart = Date.now();
+  const initialHoles = countHoles(root.board);
 
   if (warmStartPlacements && warmStartPlacements.length > 0) {
     const { state, appliedCount } = applyWarmStart(root, warmStartPlacements);
@@ -133,8 +134,11 @@ export function beamSearch(
       }
       return 0.0;
     };
+    const holeBonus = (s: SearchState): number =>
+      (initialHoles - countHoles(s.board)) * 5.0;
     unique.sort((a, b) =>
-      (evaluateState(b) + planBonus(b)) - (evaluateState(a) + planBonus(a))
+      (evaluateState(b) + planBonus(b) + holeBonus(b)) -
+      (evaluateState(a) + planBonus(a) + holeBonus(a))
     );
 
     // スピン状態を優先してビームを構成する（新しい探索視点）

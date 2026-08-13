@@ -31,8 +31,8 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const heightPenalty = maxHeight > 16 ? (maxHeight - 16) ** 2 * 2 : 0;
   const hazard =
     heightPenalty +
-    holes * 8 +
-    deepHolePenalty * 2 +
+    holes * 12 +
+    deepHolePenalty * 3 +
     deepHoleDependencyPenalty +
     (maxHeight > 20 ? 50 : 0);
 
@@ -147,7 +147,7 @@ function columnHeights(board: BitBoard): number[] {
   return heights;
 }
 
-function countHoles(board: BitBoard): number {
+export function countHoles(board: BitBoard): number {
   let holes = 0;
   for (let x = 0; x < BOARD_WIDTH; x++) {
     let col = board.cols[x];
