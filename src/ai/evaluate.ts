@@ -14,22 +14,22 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const quadWellDepth = tetrisWellDepth(board);
   const centerStackHeight = (heights[4] + heights[5]) / 2;
 
-  // 危険度：スピン受けを作るために必要な穴を過度に罰しない
+  // 危険度：高さ・穴・深い穴を厳しく罰し、生存を最優先する
+  const heightPenalty = maxHeight > 16 ? (maxHeight - 16) ** 2 * 2 : 0;
   const hazard =
-    (maxHeight > 18 ? (maxHeight - 18) * 5 : 0) +
-    holes * 3 +
-    deepHolePenalty +
-    (maxHeight > 20 ? 20 : 0);
+    heightPenalty +
+    holes * 8 +
+    deepHolePenalty * 2 +
+    (maxHeight > 20 ? 50 : 0);
 
-  // B2Bポテンシャル：地形評価は補助とし、実際のスピン機会を直接評価する方針に移行
   const b2bPotential =
-    tSlotCount * 1.5 +
-    quadWellDepth * 2.5 +
-    (state.difficultClearCount > 1 ? state.difficultClearCount * 1.5 : 0) +
-    -bumpiness * 0.6 +
-    -holes * 2.0 +
-    -rowTransitions * 0.15 +
-    calcParityBalance(heights) * 0.8;
+    tSlotCount * 0.8 +
+    quadWellDepth * 1.2 +
+    (state.difficultClearCount > 1 ? state.difficultClearCount * 1.0 : 0) +
+    -bumpiness * 1.2 +
+    -holes * 6.0 +
+    -rowTransitions * 0.3 +
+    calcParityBalance(heights) * 0.6;
 
   return {
     total: b2bPotential,
@@ -50,19 +50,20 @@ export function evaluateState(state: SearchState): number {
     state.bag.filter((p) => p === 'T').length +
     (state.hold === 'T' ? 1 : 0);
 
-  // スピン受け地形の価値（Tの数に応じて緩やかに加点）
-  const spinPotential = terrain.tSlotCount * 1.5 * (1.0 + tAvailable * 0.5);
+  // スピン受け地形の価値（過剰に評価しない）
+  const spinPotential = terrain.tSlotCount * 0.8 * (1.0 + tAvailable * 0.3);
 
   // 直近がスピンなら無条件で加点（B2B維持の価値）
   const spinActionBonus = state.lastSpinAction ? 3.0 : 0.0;
   // ライン消去自体も報酬（B2Bを切る通常消去でも、積みを減らす価値）
   const clearBonus = state.lastCleared * 2.5;
 
+  // 生存リスクを最重視しつつ攻撃力も考慮する
   return (
-    state.accumulatedAttack * 20 +
-    terrain.total * 0.6 +
+    state.accumulatedAttack * 10 +
+    terrain.total * 0.3 +
     spinPotential -
-    terrain.hazard * 3.0 +
+    terrain.hazard * 5.0 +
     spinActionBonus +
     clearBonus
   );
@@ -112,7 +113,7 @@ function countDeepHoles(board: BitBoard): number {
       if (col & 1n) {
         filled = true;
         if (holeDepth >= 3) {
-          penalty += (holeDepth - 2) * 5;
+          penalty += (holeDepth - 2) ** 2 * 5;
         }
         holeDepth = 0;
       } else if (filled) {
@@ -121,7 +122,7 @@ function countDeepHoles(board: BitBoard): number {
       col >>= 1n;
     }
     if (holeDepth >= 3) {
-      penalty += (holeDepth - 2) * 5;
+      penalty += (holeDepth - 2) ** 2 * 5;
     }
   }
   return penalty;
