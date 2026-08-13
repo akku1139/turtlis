@@ -81,8 +81,8 @@ function generateNonOPlacements(board: BitBoard, piece: MinoType): Placement[] {
   const result: Placement[] = [];
   const resultMap = new Map<string, Placement>();
 
-  // 探索を高速化するため、一度に最大 500 ノードまでに制限する
-  let maxNodes = piece === 'T' ? 500 : 400;
+  // 探索を高速化するため、一度に最大 400 ノードまでに制限する
+  let maxNodes = piece === 'T' ? 400 : 300;
   while (queue.length > 0) {
     if (maxNodes-- <= 0) break;
     const cur = queue.pop()!;

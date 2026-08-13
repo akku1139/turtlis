@@ -59,6 +59,7 @@ export function beamSearch(
           accumulatedScore: state.accumulatedScore + result.scoreGained,
           placements: [...state.placements, p],
           lastSpinAction: result.isSpinAction,
+          lastCleared: result.cleared,
         };
         candidates.push(nextState);
       }
@@ -103,6 +104,7 @@ export function beamSearch(
             accumulatedScore: heldState.accumulatedScore + result.scoreGained,
             placements: [...heldState.placements, p],
             lastSpinAction: result.isSpinAction,
+            lastCleared: result.cleared,
           };
           candidates.push(nextState);
         }
@@ -192,6 +194,7 @@ function applyWarmStart(
       accumulatedScore: state.accumulatedScore + result.scoreGained,
       placements: [...state.placements, placement],
       lastSpinAction: result.isSpinAction,
+      lastCleared: result.cleared,
     };
     applied.push(placement);
   }

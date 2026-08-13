@@ -23,6 +23,7 @@ export interface SearchState {
   accumulatedScore: number;
   placements: Placement[];
   lastSpinAction: boolean;
+  lastCleared: number;
 }
 
 export interface TerrainScore {

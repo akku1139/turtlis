@@ -24,6 +24,7 @@ export function buildSearchState(game: GameCore): SearchState {
     accumulatedScore: 0,
     placements: [],
     lastSpinAction: false,
+    lastCleared: 0,
   };
 }
 
