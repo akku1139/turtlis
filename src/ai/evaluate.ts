@@ -17,6 +17,7 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const verticalParity = getVerticalParity(heights);
   const maxDeepHoleDepth = getMaxDeepHoleDepth(board);
   const deepWellCount = countDeepWellColumns(board);
+  const rowPotential = countRowPotential(board);
   const sideAvg = (heights[0] + heights[1] + heights[8] + heights[9]) / 4;
   const allAvg = heights.reduce((a, b) => a + b, 0) / BOARD_WIDTH;
   const sideCoverage = (sideAvg - allAvg) * 2.0;
@@ -60,7 +61,8 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
     (checkerParity !== 0 ? 1.5 : 0) -
     (verticalParity !== 0 ? 1.5 : 0) +
     sideCoverage -
-    centerTowerPenalty;
+    centerTowerPenalty +
+    rowPotential * 1.5;
 
   return {
     total: b2bPotential,
@@ -88,6 +90,7 @@ export function evaluateState(state: SearchState): number {
   const spinActionBonus = state.lastSpinAction ? 5.0 : 0.0;
   // ライン消去自体も報酬（B2Bを切る通常消去でも、積みを減らす価値）
   const clearBonus = state.lastCleared * 2.5;
+  const clearPotentialBonus = computeTerrainScore(state).total; // reuse total
 
   // 全消し（All Clear）は最優先で取る
   const isAllClear = state.board.isEmpty() && state.lastCleared > 0;
@@ -128,6 +131,7 @@ export function evaluateState(state: SearchState): number {
     terrain.hazard * 6.0 +
     spinActionBonus +
     clearBonus +
+    clearPotentialBonus * 0.2 +
     tSpinSingleBonus +
     tSpinDoubleBonus +
     b2bChainBonus +
@@ -314,6 +318,20 @@ function getVerticalParity(heights: number[]): number {
     sum += heights[x];
   }
   return sum & 1;
+}
+
+function countRowPotential(board: BitBoard): number {
+  let potential = 0;
+  for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
+    let filled = 0;
+    for (let x = 0; x < BOARD_WIDTH; x++) {
+      if (board.get(x, y)) filled++;
+    }
+    if (filled >= 8) {
+      potential += filled - 7;
+    }
+  }
+  return potential;
 }
 
 // Tスロット形状の検出：左受けTSD・右受けTSD・簡易TST
