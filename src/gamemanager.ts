@@ -1,7 +1,7 @@
 import { GameCore } from './gamecore.ts';
 import { InputManager } from './inputmanager.ts';
 import { Renderer } from './renderer.ts';
-import { suggestBestPlan } from './ai/search.ts';
+import type { Placement } from './ai/types.ts';
 
 export class GameManager {
   core: GameCore;
@@ -9,6 +9,11 @@ export class GameManager {
   input: InputManager;
   lastTime: number;
   aiWorker: Worker | null = null;
+  aiEnabled: boolean = false;
+  aiBusy: boolean = false;
+  aiPending: boolean = false;
+  lastSearchKey: string = '';
+  aiResult: Placement | null = null;
 
   constructor() {
     this.core = new GameCore();
@@ -19,6 +24,7 @@ export class GameManager {
     this.loop = this.loop.bind(this);
 
     this.setupConfigListeners();
+    this.setupAI();
   }
 
   setupConfigListeners() {
@@ -32,49 +38,85 @@ export class GameManager {
     });
   }
 
-  suggestAI() {
-    if (this.core.state !== 'PLAYING') return;
+  setupAI() {
+    const toggle = document.getElementById('aiToggle') as HTMLInputElement | null;
+    toggle?.addEventListener('change', () => {
+      this.aiEnabled = toggle.checked;
+      const output = document.getElementById('aiOutput');
+      if (this.aiEnabled) {
+        if (output) output.textContent = 'AI waiting for new piece...';
+        this.lastSearchKey = '';
+        this.triggerSearchIfNeeded();
+      } else {
+        if (output) output.textContent = '';
+        this.renderer.setAIGhost(null);
+        this.aiPending = false;
+      }
+    });
+  }
 
-    const aiBtn = document.getElementById('aiSuggestBtn') as HTMLButtonElement | null;
-    const aiOutput = document.getElementById('aiOutput');
-    if (aiBtn) aiBtn.disabled = true;
-    if (aiOutput) aiOutput.textContent = 'AI thinking... (0/?)';
+  private getSearchKey(): string {
+    return `${this.core.piecesPlaced}|${this.core.currentMino.type}|${this.core.nextQueue.join(',')}|${this.core.holdType}|${this.core.comboCount}|${this.core.difficultClearCount}`;
+  }
 
-    this.renderer.setAIGhost(null);
+  private triggerSearchIfNeeded() {
+    if (!this.aiEnabled || this.core.state !== 'PLAYING') return;
+    const key = this.getSearchKey();
+    if (key === this.lastSearchKey) return;
+    this.lastSearchKey = key;
+    if (this.aiBusy) {
+      this.aiPending = true;
+      return;
+    }
+    this.aiBusy = true;
+    const output = document.getElementById('aiOutput');
+    if (output) output.textContent = 'AI thinking...';
 
     if (!this.aiWorker) {
       this.aiWorker = new Worker(new URL('./ai/searchWorker.ts', import.meta.url), { type: 'module' });
       this.aiWorker.onmessage = (e) => {
         const data = e.data;
         if (data.type === 'result') {
-          if (aiOutput) aiOutput.textContent = JSON.stringify(data.placements, null, 2);
+          this.aiBusy = false;
+          if (output) output.textContent = JSON.stringify(data.placements, null, 2);
           if (data.placements && data.placements.length > 0) {
             const first = data.placements[0];
-            // 1手目をゴースト表示するための Placement を構築
             this.renderer.setAIGhost({
               piece: first.piece,
               rotation: first.rotation,
               x: first.x,
               y: first.y,
-              matrix: [], // matrix は renderer 側で再構築される
+              matrix: [], // renderer 側で再構築
               lastActionWasRotation: false,
               lastKickIndex: 0,
             });
           } else {
             this.renderer.setAIGhost(null);
           }
+          if (this.aiPending) {
+            this.aiPending = false;
+            this.triggerSearchIfNeeded();
+          }
         } else if (data.type === 'progress') {
-          if (aiOutput) aiOutput.textContent = `AI thinking... (${data.depth}/${data.totalDepth}, candidates: ${data.candidates})`;
+          if (output) output.textContent = `AI thinking... (${data.depth}/${data.totalDepth}, candidates: ${data.candidates})`;
         } else if (data.type === 'error') {
-          if (aiOutput) aiOutput.textContent = 'AI error: ' + data.error;
+          this.aiBusy = false;
+          if (output) output.textContent = 'AI error: ' + data.error;
           this.renderer.setAIGhost(null);
+          if (this.aiPending) {
+            this.aiPending = false;
+            this.triggerSearchIfNeeded();
+          }
         }
-        if (aiBtn) aiBtn.disabled = false;
       };
       this.aiWorker.onerror = (e) => {
-        if (aiOutput) aiOutput.textContent = 'Worker error: ' + e.message;
+        this.aiBusy = false;
+        if (output) output.textContent = 'Worker error: ' + e.message;
         this.renderer.setAIGhost(null);
-        if (aiBtn) aiBtn.disabled = false;
+        if (this.aiPending) {
+          this.aiPending = false;
+          this.triggerSearchIfNeeded();
+        }
       };
     }
 
@@ -87,7 +129,7 @@ export class GameManager {
       canHold: this.core.canHold,
       comboCount: this.core.comboCount,
       difficultClearCount: this.core.difficultClearCount,
-      beamWidth: 200,
+      beamWidth: 80,
     });
   }
 
@@ -103,6 +145,8 @@ export class GameManager {
     this.input.update(dt);
     this.core.update(dt);
     this.renderer.render(this.core);
+
+    this.triggerSearchIfNeeded();
 
     requestAnimationFrame(this.loop);
   }

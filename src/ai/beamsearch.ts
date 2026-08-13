@@ -1,11 +1,11 @@
 import type { SearchState, Placement } from './types.ts';
-import { generatePlacements } from './movegen.ts';
+import { generatePlacementsFast as generatePlacements } from './movegen.ts';
 import { simulateLock, simulateHold } from './pure.ts';
 import { evaluateState } from './evaluate.ts';
 
 export function beamSearch(
   root: SearchState,
-  beamWidth: number = 300,
+  beamWidth: number = 80,
   maxDepth?: number,
   onProgress?: (info: { depth: number; totalDepth: number; candidates: number }) => void,
 ): SearchState {
