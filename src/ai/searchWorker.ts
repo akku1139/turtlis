@@ -2,12 +2,13 @@
 
 import { beamSearch } from './beamsearch';
 import { BitBoard } from './bitboard';
-import type { SearchState, Placement } from './types';
+import type { SearchState } from './types';
 
 self.onmessage = (e: MessageEvent) => {
   const data = e.data;
   if (data.type === 'search') {
     const searchId = data.searchId;
+    const searchKey = data.searchKey;
     const state: SearchState = {
       board: BitBoard.fromGrid(data.boardGrid),
       current: data.current,
@@ -30,10 +31,11 @@ self.onmessage = (e: MessageEvent) => {
           (self as unknown as DedicatedWorkerGlobalScope).postMessage({
             type: 'progress',
             searchId,
+            searchKey,
             depth: progress.depth,
             totalDepth: progress.totalDepth,
             candidates: progress.candidates,
-            placements: progress.bestState.placements.map(p => ({
+            placements: progress.bestState.placements.map((p) => ({
               piece: p.piece,
               rotation: p.rotation,
               x: p.x,
@@ -45,7 +47,8 @@ self.onmessage = (e: MessageEvent) => {
         },
         data.warmStartPlacements,
       );
-      const placements = best.placements.map(p => ({
+
+      const placements = best.placements.map((p) => ({
         piece: p.piece,
         x: p.x,
         y: p.y,
@@ -53,15 +56,21 @@ self.onmessage = (e: MessageEvent) => {
         lastActionWasRotation: p.lastActionWasRotation,
         lastKickIndex: p.lastKickIndex,
       }));
+
       (self as unknown as DedicatedWorkerGlobalScope).postMessage({
         type: 'result',
         searchId,
-        searchKey: data.searchKey,
+        searchKey,
         placements,
         attack: best.accumulatedAttack,
       });
     } catch (err) {
-      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'error', searchId, searchKey: data.searchKey, error: String(err) });
+      (self as unknown as DedicatedWorkerGlobalScope).postMessage({
+        type: 'error',
+        searchId,
+        searchKey,
+        error: String(err),
+      });
     }
   }
 };
