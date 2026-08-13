@@ -91,6 +91,10 @@ export class GameManager {
     const gravityZeroCheckbox = document.getElementById('cfgGravityZero') as HTMLInputElement | null;
 
     const updateAIEnabled = () => {
+      const prevEnabled = this.aiEnabled;
+      const prevAuto = this.aiAutoEnabled;
+      const prevContinuous = this.aiContinuousEnabled;
+
       this.aiEnabled = toggle?.checked ?? false;
       this.aiAutoEnabled = autoToggle?.checked ?? false;
       this.aiContinuousEnabled = continuousToggle?.checked ?? false;
@@ -103,6 +107,11 @@ export class GameManager {
         }
       }
 
+      const changed =
+        prevEnabled !== this.aiEnabled ||
+        prevAuto !== this.aiAutoEnabled ||
+        prevContinuous !== this.aiContinuousEnabled;
+
       const output = document.getElementById('aiOutput');
       const statusOverlay = document.getElementById('aiStatusOverlay');
       const statusText = document.getElementById('aiStatusText');
@@ -113,14 +122,12 @@ export class GameManager {
 
       if (this.aiEnabled) {
         if (statusText) statusText.textContent = this.aiAutoEnabled ? 'AI AUTO' : 'AI ON';
-        if (output) output.textContent = 'AI waiting for new piece...';
         if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
-        this.lastSearchKey = '';
-        this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
-        this.aiWarmStartPlacements = [];
-        this.aiGhostSequence = [];
-        this.renderer.setAIGhostSequence([]);
-        this.aiQueuedPlacement = null;
+        if (changed) {
+          this.restartSearch();
+        } else {
+          if (output) output.textContent = 'AI waiting for new piece...';
+        }
       } else {
         if (output) output.textContent = '';
         if (statusText) statusText.textContent = 'AI OFF';
@@ -130,11 +137,7 @@ export class GameManager {
         this.renderer.setAIGhostSequence([]);
         this.aiQueuedPlacement = null;
         this.aiWarmStartPlacements = [];
-        this.aiBusy = false;
-        if (this.aiWorker) {
-          this.aiWorker.terminate();
-          this.aiWorker = null;
-        }
+        this.restartSearch(); // Ensure worker stopped
       }
     };
 
@@ -143,6 +146,24 @@ export class GameManager {
     continuousToggle?.addEventListener('change', updateAIEnabled);
 
     updateAIEnabled();
+  }
+
+  private restartSearch(): void {
+    if (this.aiWorker) {
+      this.aiWorker.terminate();
+      this.aiWorker = null;
+    }
+    this.aiBusy = false;
+    this.aiSearchId = 0;
+    this.lastSearchKey = '';
+    this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
+    this.aiQueuedPlacement = null;
+    this.aiWarmStartPlacements = [];
+    this.aiGhostSequence = [];
+    this.renderer.setAIGhostSequence([]);
+    if (this.aiEnabled) {
+      this.triggerSearchIfNeeded();
+    }
   }
 
   private getSearchKey(): string {
