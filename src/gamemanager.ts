@@ -173,6 +173,11 @@ export class GameManager {
   private triggerSearchIfNeeded() {
     if (!this.aiEnabled || this.core.state !== 'PLAYING') return;
 
+    if (this.core.piecesPlaced < this.lastProcessedPiecesPlaced) {
+      this.restartSearch();
+      return;
+    }
+
     if (this.core.piecesPlaced !== this.lastProcessedPiecesPlaced) {
       this.lastSearchKey = '';
       this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
@@ -191,7 +196,7 @@ export class GameManager {
       this.core.holdType,
     );
 
-    if (stockResult && stockResult.placements.length > 0) {
+    if (!this.aiAutoEnabled && stockResult && stockResult.placements.length > 0) {
       this.aiGhostSequence = stockResult.placements;
       this.aiWarmStartPlacements = stockResult.placements.slice(1);
       this.renderer.setAIGhostSequence(this.aiGhostSequence);
@@ -381,6 +386,8 @@ export class GameManager {
       const placement = this.aiQueuedPlacement;
       this.aiQueuedPlacement = null;
       this.executeAIPlacement(placement);
+      this.lastSearchKey = '';
+      this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
     }
 
     this.renderer.render(this.core);

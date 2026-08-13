@@ -88,21 +88,6 @@ export class TemplateStock {
       return { placements: exact.placements, expectedAttack: exact.expectedAttack };
     }
 
-    let best: StockEntry | null = null;
-    let bestDist = Infinity;
-    for (const entry of this.entries.values()) {
-      if (entry.current !== current) continue;
-      const dist = this.similarity(features, entry.features);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = entry;
-      }
-    }
-
-    if (best && bestDist < 0.5) {
-      return { placements: best.placements, expectedAttack: best.expectedAttack };
-    }
-
     return null;
   }
 

@@ -8,7 +8,28 @@ export function generatePlacements(board: BitBoard, piece: MinoType): Placement[
   if (piece === 'O') {
     return generateOPlacements(board);
   }
-  return generateNonOPlacements(board, piece);
+  const placements = generateNonOPlacements(board, piece);
+  if (placements.length > 0) return placements;
+
+  // Fallback: if BFS produced no placements (should normally not happen),
+  // generate a simple drop from spawn.
+  const startX = spawnX(piece);
+  const startY = spawnY(piece, 0);
+  const matrix = getMatrix(piece, 0);
+  if (!board.collides(matrix, startX, startY)) {
+    let y = startY;
+    while (!board.collides(matrix, startX, y + 1)) y++;
+    return [{
+      piece,
+      rotation: 0,
+      x: startX,
+      y,
+      matrix,
+      lastActionWasRotation: false,
+      lastKickIndex: 0,
+    }];
+  }
+  return [];
 }
 
 function generateOPlacements(board: BitBoard): Placement[] {
