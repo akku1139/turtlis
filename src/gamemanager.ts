@@ -393,13 +393,20 @@ export class GameManager {
     this.core.lastKickIndex = p.lastKickIndex ?? 0;
     this.core.lockPiece();
 
-    const remaining = this.aiGhostSequence.slice(1);
     this.lastSearchKey = '';
     this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
-    this.aiGhostSequence = remaining;
-    this.renderer.setAIGhostSequence(remaining);
-    this.aiWarmStartPlacements = remaining;
+    this.aiGhostSequence = [];
+    this.renderer.setAIGhostSequence([]);
+    this.aiWarmStartPlacements = [];
     this.aiQueuedPlacement = null;
+
+    if (this.aiAutoEnabled && !this.aiContinuousEnabled) {
+      const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
+      if (autoToggle) {
+        autoToggle.checked = false;
+        autoToggle.dispatchEvent(new Event('change'));
+      }
+    }
   }
 
   start() {
