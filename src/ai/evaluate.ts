@@ -1,5 +1,6 @@
 import type { SearchState, TerrainScore } from './types.ts';
 import { BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
+import type { BitBoard } from './bitboard.ts';
 
 export function computeTerrainScore(state: SearchState): TerrainScore {
   const board = state.board;
@@ -12,22 +13,21 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const quadWellDepth = tetrisWellDepth(board);
   const centerStackHeight = (heights[4] + heights[5]) / 2;
 
+  // 危険度：スピン受けを作るために必要な穴を過度に罰しない
   const hazard =
     (maxHeight > 18 ? (maxHeight - 18) * 5 : 0) +
-    holes * 5 +
+    holes * 3 +
     (maxHeight > 20 ? 20 : 0);
 
+  // B2Bポテンシャル：中央を高くする評価は削除
   const b2bPotential =
-    tSlotCount * 3.0 +
+    tSlotCount * 4.0 +
     quadWellDepth * 2.5 +
     (state.difficultClearCount > 1 ? state.difficultClearCount * 3.0 : 0) +
-    centerStackHeight * 0.3 +
     -bumpiness * 0.6 +
     -holes * 2.0 +
     -rowTransitions * 0.15 +
-    calcParityBalance(heights) * 0.8 +
-    // 高い列が中央に集まっていると B2B 地形を作りやすい
-    (heights[4] + heights[5] > 12 ? 2.0 : 0.0);
+    calcParityBalance(heights) * 0.8;
 
   return {
     total: b2bPotential,
@@ -41,11 +41,30 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
 
 export function evaluateState(state: SearchState): number {
   const terrain = computeTerrainScore(state);
-  const spinBonus = state.lastSpinAction && state.lastCleared > 0 ? state.lastCleared * 2.0 : 0.0;
-  return state.accumulatedAttack * 20 + terrain.total * 0.8 - terrain.hazard * 3.0 + spinBonus;
+
+  // 現在のミノ・ネクスト・ホールドに残っている T の数を数える
+  const tAvailable =
+    (state.current === 'T' ? 1 : 0) +
+    state.bag.filter((p) => p === 'T').length +
+    (state.hold === 'T' ? 1 : 0);
+
+  // スピン受けがあるなら、その受けを使える T の数に応じて加点
+  const spinPotential = terrain.tSlotCount * (1.0 + tAvailable * 1.5);
+
+  // 直近がスピンでラインを消した場合は追加報酬
+  const spinBonus =
+    state.lastSpinAction && state.lastCleared > 0 ? state.lastCleared * 3.0 : 0.0;
+
+  return (
+    state.accumulatedAttack * 20 +
+    terrain.total * 0.6 +
+    spinPotential * 2.0 -
+    terrain.hazard * 2.5 +
+    spinBonus
+  );
 }
 
-function columnHeights(board: import('./bitboard.ts').BitBoard): number[] {
+function columnHeights(board: BitBoard): number[] {
   const heights = new Array(BOARD_WIDTH).fill(0);
   for (let x = 0; x < BOARD_WIDTH; x++) {
     let col = board.cols[x];
@@ -62,7 +81,7 @@ function columnHeights(board: import('./bitboard.ts').BitBoard): number[] {
   return heights;
 }
 
-function countHoles(board: import('./bitboard.ts').BitBoard): number {
+function countHoles(board: BitBoard): number {
   let holes = 0;
   for (let x = 0; x < BOARD_WIDTH; x++) {
     let col = board.cols[x];
@@ -87,7 +106,7 @@ function calcBumpiness(heights: number[]): number {
   return bump;
 }
 
-function calcRowTransitions(board: import('./bitboard.ts').BitBoard): number {
+function calcRowTransitions(board: BitBoard): number {
   let transitions = 0;
   for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
     let prev = 0;
@@ -100,7 +119,7 @@ function calcRowTransitions(board: import('./bitboard.ts').BitBoard): number {
   return transitions;
 }
 
-function tetrisWellDepth(board: import('./bitboard.ts').BitBoard): number {
+function tetrisWellDepth(board: BitBoard): number {
   const heights = columnHeights(board);
   let best = 0;
   for (let wellX = 0; wellX < BOARD_WIDTH; wellX++) {
@@ -128,10 +147,11 @@ function calcParityBalance(heights: number[]): number {
   return -Math.abs(leftAvg - rightAvg);
 }
 
-// 簡易Tスロット検出（実際にはパターンDBを使う）
-function countTSlotShapes(board: import('./bitboard.ts').BitBoard): number {
+// Tスロット形状の検出：左受けTSD・右受けTSD・簡易TST
+function countTSlotShapes(board: BitBoard): number {
   let count = 0;
-  // 左受けTSD形状
+
+  // 左受けTSD
   for (let x = 0; x < BOARD_WIDTH - 2; x++) {
     for (let y = 0; y < BOARD_TOTAL_HEIGHT - 3; y++) {
       const left = board.get(x, y) && board.get(x, y + 1) && board.get(x, y + 2);
@@ -140,7 +160,8 @@ function countTSlotShapes(board: import('./bitboard.ts').BitBoard): number {
       if (left && center && right) count++;
     }
   }
-  // 右受けTSD形状
+
+  // 右受けTSD
   for (let x = 0; x < BOARD_WIDTH - 2; x++) {
     for (let y = 0; y < BOARD_TOTAL_HEIGHT - 3; y++) {
       const left = board.get(x, y + 1) && board.get(x, y + 2) && board.get(x, y + 3);
@@ -149,7 +170,8 @@ function countTSlotShapes(board: import('./bitboard.ts').BitBoard): number {
       if (left && center && right) count++;
     }
   }
-  // 簡易TST形状（3段）
+
+  // 簡易TST
   for (let x = 0; x < BOARD_WIDTH - 2; x++) {
     for (let y = 0; y < BOARD_TOTAL_HEIGHT - 4; y++) {
       const left = board.get(x, y) && board.get(x, y + 1) && board.get(x, y + 2) && board.get(x, y + 3);
@@ -158,5 +180,6 @@ function countTSlotShapes(board: import('./bitboard.ts').BitBoard): number {
       if (left && center && right) count++;
     }
   }
+
   return count;
 }
