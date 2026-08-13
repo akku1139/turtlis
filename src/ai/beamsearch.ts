@@ -126,16 +126,14 @@ export function beamSearch(
     // 評価値でソート
     unique.sort((a, b) => evaluateState(b) - evaluateState(a));
 
-    // スピンを含む有望な状態を優先的にビームに残す
-    const top = unique.slice(0, beamWidth);
-    const bestSpin = unique.find((s) => s.lastSpinAction && s.lastCleared > 0);
-
-    if (bestSpin && !top.includes(bestSpin)) {
-      // 最後の1枠をスピン状態に差し替えて探索の多様性を確保する
-      top[top.length - 1] = bestSpin;
-    }
-
-    beam = top;
+    // スピン状態を優先してビームを構成する（新しい探索視点）
+    const spinStates = unique.filter((s) => s.lastSpinAction && s.lastCleared > 0);
+    const normalStates = unique.filter((s) => !(s.lastSpinAction && s.lastCleared > 0));
+    const spinSlots = Math.min(spinStates.length, Math.floor(beamWidth * 0.6));
+    const topSpins = spinStates.slice(0, spinSlots);
+    const remainingSlots = beamWidth - topSpins.length;
+    const topNormals = normalStates.slice(0, remainingSlots);
+    beam = [...topSpins, ...topNormals];
 
     if (timeLimitMs && Date.now() - searchStart > timeLimitMs) {
       break;
