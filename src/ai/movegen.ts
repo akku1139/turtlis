@@ -177,8 +177,5 @@ export function generatePlacementsFast(board: BitBoard, piece: MinoType): Placem
 }
 
 function addPlacement(result: Placement[], p: Placement) {
-  const key = `${p.piece},${p.rotation},${p.x},${p.y},${p.lastActionWasRotation},${p.lastKickIndex}`;
-  if (!result.some((r) => `${r.piece},${r.rotation},${r.x},${r.y},${r.lastActionWasRotation},${r.lastKickIndex}` === key)) {
-    result.push(p);
-  }
+  result.push(p);
 }
