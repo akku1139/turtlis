@@ -24,6 +24,7 @@ export class GameManager {
   aiContinuousEnabled: boolean = false;
   private aiWarmStartPlacements: Array<{ piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
   private lastProcessedPiecesPlaced = -1;
+  private aiPendingPlacement: { piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number } | null = null;
 
   constructor() {
     this.core = new GameCore();
@@ -118,6 +119,7 @@ export class GameManager {
 
     const key = this.getSearchKey();
     if (key === this.lastSearchKey) return;
+    if (this.aiPendingPlacement) return; // 設置待ちがあるので探索しない
     this.lastSearchKey = key;
 
     // テンプレートストックを先に照会
@@ -171,6 +173,7 @@ export class GameManager {
     this.aiWorker.onmessage = (e) => {
       const data = e.data;
       if (data.searchId !== searchId) return; // 古い探索の結果は無視
+      if (data.searchKey !== this.getSearchKey()) return; // 盤面が変わったので無視
 
       if (data.type === 'result') {
         this.aiBusy = false;
@@ -208,17 +211,8 @@ export class GameManager {
         }
 
         if (this.aiAutoEnabled && this.aiGhostSequence.length > 0) {
-          this.executeAIPlacement(this.aiGhostSequence[0]);
-          if (!this.aiContinuousEnabled) {
-            const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
-            if (autoToggle) autoToggle.checked = false;
-            this.aiAutoEnabled = false;
-          }
-        }
-        // 終了後、新たな探索が必要か確認
-        if (this.aiPending) {
-          this.aiPending = false;
-          this.triggerSearchIfNeeded();
+          // 設置はゲームループで行う
+          this.aiPendingPlacement = this.aiGhostSequence[0];
         }
       } else if (data.type === 'progress') {
         if (output) output.textContent = `Searching... ${data.depth}/${data.totalDepth} (candidates: ${data.candidates})`;
@@ -261,6 +255,7 @@ export class GameManager {
     this.aiWorker.postMessage({
       type: 'search',
       searchId,
+      searchKey: key,
       boardGrid: this.core.board.grid,
       current: this.core.currentMino.type,
       bag: this.core.nextQueue.slice(),
@@ -295,6 +290,7 @@ export class GameManager {
     this.aiBusy = false;
     this.aiGhostSequence = [];
     this.renderer.setAIGhostSequence([]);
+    this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
   }
 
   start() {
@@ -308,6 +304,18 @@ export class GameManager {
 
     this.input.update(dt);
     this.core.update(dt);
+
+    // AI Auto の設置待ちがあれば実行
+    if (this.aiPendingPlacement && this.aiAutoEnabled && this.core.state === 'PLAYING') {
+      const placement = this.aiPendingPlacement;
+      this.aiPendingPlacement = null;
+      this.executeAIPlacement(placement);
+      // 連続モードなら直後に次の探索を開始
+      if (this.aiContinuousEnabled && this.aiAutoEnabled) {
+        this.triggerSearchIfNeeded();
+      }
+    }
+
     this.renderer.render(this.core);
 
     this.triggerSearchIfNeeded();

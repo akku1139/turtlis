@@ -56,11 +56,12 @@ self.onmessage = (e: MessageEvent) => {
       (self as unknown as DedicatedWorkerGlobalScope).postMessage({
         type: 'result',
         searchId,
+        searchKey: data.searchKey,
         placements,
         attack: best.accumulatedAttack,
       });
     } catch (err) {
-      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'error', searchId, error: String(err) });
+      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'error', searchId, searchKey: data.searchKey, error: String(err) });
     }
   }
 };
