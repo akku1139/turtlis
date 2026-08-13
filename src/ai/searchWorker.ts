@@ -20,6 +20,7 @@ self.onmessage = (e: MessageEvent) => {
       accumulatedAttack: 0,
       accumulatedScore: 0,
       placements: [],
+      lastSpinAction: false,
     };
 
     try {

@@ -157,6 +157,7 @@ export interface LockResult {
   totalAttack: number;
   newComboCount: number;
   newDifficultClearCount: number;
+  isSpinAction: boolean;
 }
 
 export function simulateLock(
@@ -260,6 +261,7 @@ export function simulateLock(
       totalAttack,
       newComboCount,
       newDifficultClearCount,
+      isSpinAction,
     },
     nextBoard,
   };

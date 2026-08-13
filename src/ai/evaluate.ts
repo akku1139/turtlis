@@ -18,9 +18,9 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
     (maxHeight > 20 ? 20 : 0);
 
   const b2bPotential =
-    tSlotCount * 3.0 +
+    tSlotCount * 4.0 +
     quadWellDepth * 2.5 +
-    (state.difficultClearCount > 1 ? state.difficultClearCount * 2.0 : 0) +
+    (state.difficultClearCount > 1 ? state.difficultClearCount * 4.0 : 0) +
     centerStackHeight * 0.3 +
     -bumpiness * 0.6 +
     -holes * 2.0 +
@@ -41,7 +41,8 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
 
 export function evaluateState(state: SearchState): number {
   const terrain = computeTerrainScore(state);
-  return state.accumulatedAttack * 15 + terrain.total * 0.8 - terrain.hazard * 2.5;
+  const spinBonus = state.lastSpinAction ? 8.0 : 0.0;
+  return state.accumulatedAttack * 15 + terrain.total * 0.8 - terrain.hazard * 2.5 + spinBonus;
 }
 
 function columnHeights(board: import('./bitboard.ts').BitBoard): number[] {
@@ -130,12 +131,30 @@ function calcParityBalance(heights: number[]): number {
 // 簡易Tスロット検出（実際にはパターンDBを使う）
 function countTSlotShapes(board: import('./bitboard.ts').BitBoard): number {
   let count = 0;
-  // 左受けTSD形状の簡易チェック
+  // 左受けTSD形状
   for (let x = 0; x < BOARD_WIDTH - 2; x++) {
     for (let y = 0; y < BOARD_TOTAL_HEIGHT - 3; y++) {
       const left = board.get(x, y) && board.get(x, y + 1) && board.get(x, y + 2);
       const center = !board.get(x + 1, y) && !board.get(x + 1, y + 1) && !board.get(x + 1, y + 2);
       const right = board.get(x + 2, y + 1) && board.get(x + 2, y + 2) && board.get(x + 2, y + 3);
+      if (left && center && right) count++;
+    }
+  }
+  // 右受けTSD形状
+  for (let x = 0; x < BOARD_WIDTH - 2; x++) {
+    for (let y = 0; y < BOARD_TOTAL_HEIGHT - 3; y++) {
+      const left = board.get(x, y + 1) && board.get(x, y + 2) && board.get(x, y + 3);
+      const center = !board.get(x + 1, y) && !board.get(x + 1, y + 1) && !board.get(x + 1, y + 2);
+      const right = board.get(x + 2, y) && board.get(x + 2, y + 1) && board.get(x + 2, y + 2);
+      if (left && center && right) count++;
+    }
+  }
+  // 簡易TST形状（3段）
+  for (let x = 0; x < BOARD_WIDTH - 2; x++) {
+    for (let y = 0; y < BOARD_TOTAL_HEIGHT - 4; y++) {
+      const left = board.get(x, y) && board.get(x, y + 1) && board.get(x, y + 2) && board.get(x, y + 3);
+      const center = !board.get(x + 1, y) && !board.get(x + 1, y + 1) && !board.get(x + 1, y + 2) && !board.get(x + 1, y + 3);
+      const right = board.get(x + 2, y + 2) && board.get(x + 2, y + 3) && board.get(x + 2, y + 4);
       if (left && center && right) count++;
     }
   }

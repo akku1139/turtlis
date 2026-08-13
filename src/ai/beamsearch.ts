@@ -58,6 +58,7 @@ export function beamSearch(
           accumulatedAttack: state.accumulatedAttack + result.totalAttack,
           accumulatedScore: state.accumulatedScore + result.scoreGained,
           placements: [...state.placements, p],
+          lastSpinAction: result.isSpinAction,
         };
         candidates.push(nextState);
       }
@@ -101,6 +102,7 @@ export function beamSearch(
             accumulatedAttack: heldState.accumulatedAttack + result.totalAttack,
             accumulatedScore: heldState.accumulatedScore + result.scoreGained,
             placements: [...heldState.placements, p],
+            lastSpinAction: result.isSpinAction,
           };
           candidates.push(nextState);
         }
@@ -189,6 +191,7 @@ function applyWarmStart(
       accumulatedAttack: state.accumulatedAttack + result.totalAttack,
       accumulatedScore: state.accumulatedScore + result.scoreGained,
       placements: [...state.placements, placement],
+      lastSpinAction: result.isSpinAction,
     };
     applied.push(placement);
   }

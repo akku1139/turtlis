@@ -23,6 +23,7 @@ export function buildSearchState(game: GameCore): SearchState {
     accumulatedAttack: 0,
     accumulatedScore: 0,
     placements: [],
+    lastSpinAction: false,
   };
 }
 
