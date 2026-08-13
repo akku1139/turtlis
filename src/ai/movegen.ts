@@ -78,13 +78,15 @@ function generateNonOPlacements(board: BitBoard, piece: MinoType): Placement[] {
     lastKickIndex: 0,
   }];
   let head = 0;
+  let nodesProcessed = 0;
   const visited = new Set<string>();
   const result: Placement[] = [];
   const resultMap = new Map<string, Placement>();
 
   while (head < queue.length) {
+    if (nodesProcessed++ > 5000) break;
     const cur = queue[head++];
-    const key = `${cur.rotation},${cur.x},${cur.y},${cur.lastActionWasRotation}`;
+    const key = `${cur.rotation},${cur.x},${cur.y},${cur.lastActionWasRotation},${cur.lastKickIndex}`;
     if (visited.has(key)) continue;
     visited.add(key);
 

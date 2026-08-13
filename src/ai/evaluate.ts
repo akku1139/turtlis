@@ -276,5 +276,63 @@ function countTSlotShapes(board: BitBoard): number {
     }
   }
 
+  // T-spin Single (TSS) 地形の検出
+  // 4方向それぞれで、T字の穴（中心+腕）が空いており、角が2つ以上埋まっている形
+  for (let x = 0; x < BOARD_WIDTH - 2; x++) {
+    for (let y = 0; y < BOARD_TOTAL_HEIGHT - 3; y++) {
+      const empty = (px: number, py: number) => !board.get(px, py);
+      const filled = (px: number, py: number) => board.get(px, py);
+
+      const corners = [
+        filled(x, y),
+        filled(x + 2, y),
+        filled(x, y + 2),
+        filled(x + 2, y + 2),
+      ].filter(Boolean).length;
+
+      if (corners < 2) continue;
+
+      // 上向き（Tが下向きに出現する形）
+      if (
+        empty(x, y + 1) &&
+        empty(x + 1, y + 1) &&
+        empty(x + 2, y + 1) &&
+        empty(x + 1, y + 2)
+      ) {
+        count++;
+      }
+
+      // 下向き
+      if (
+        empty(x, y + 1) &&
+        empty(x + 1, y + 1) &&
+        empty(x + 2, y + 1) &&
+        empty(x + 1, y)
+      ) {
+        count++;
+      }
+
+      // 右向き
+      if (
+        empty(x, y + 1) &&
+        empty(x + 1, y) &&
+        empty(x + 1, y + 1) &&
+        empty(x + 1, y + 2)
+      ) {
+        count++;
+      }
+
+      // 左向き
+      if (
+        empty(x + 2, y + 1) &&
+        empty(x + 1, y) &&
+        empty(x + 1, y + 1) &&
+        empty(x + 1, y + 2)
+      ) {
+        count++;
+      }
+    }
+  }
+
   return count;
 }
