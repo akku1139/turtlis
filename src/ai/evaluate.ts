@@ -54,7 +54,7 @@ export function evaluateState(state: SearchState): number {
   const spinPotential = terrain.tSlotCount * 0.8 * (1.0 + tAvailable * 0.3);
 
   // 直近がスピンなら無条件で加点（B2B維持の価値）
-  const spinActionBonus = state.lastSpinAction ? 3.0 : 0.0;
+  const spinActionBonus = state.lastSpinAction ? 5.0 : 0.0;
   // ライン消去自体も報酬（B2Bを切る通常消去でも、積みを減らす価値）
   const clearBonus = state.lastCleared * 2.5;
 
@@ -65,22 +65,22 @@ export function evaluateState(state: SearchState): number {
 
   // Tスピン単発・B2B連鎖を強く優先する
   const tSpinSingleBonus =
-    state.lastSpinAction && state.lastCleared === 1 ? 8.0 : 0.0;
+    state.lastSpinAction && state.lastCleared === 1 ? 12.0 : 0.0;
   const tSpinDoubleBonus =
-    state.lastSpinAction && state.lastCleared === 2 ? 4.0 : 0.0;
+    state.lastSpinAction && state.lastCleared === 2 ? 6.0 : 0.0;
   const b2bChainBonus =
     state.difficultClearCount > 1
-      ? (state.difficultClearCount - 1) * 2.5
+      ? (state.difficultClearCount - 1) * 4.0
       : 0.0;
   const spinChainBonus =
-    state.lastSpinAction && state.difficultClearCount > 1 ? 5.0 : 0.0;
+    state.lastSpinAction && state.difficultClearCount > 1 ? 8.0 : 0.0;
 
   // 攻撃力・地形・スピン受けをバランスし、生存を維持しつつスピンを狙う
   return (
     state.accumulatedAttack * 12 +
     terrain.total * 0.5 +
     spinPotential -
-    terrain.hazard * 5.0 +
+    terrain.hazard * 6.0 +
     spinActionBonus +
     clearBonus +
     tSpinSingleBonus +
@@ -136,7 +136,7 @@ function countDeepHoles(board: BitBoard): number {
       if (col & 1n) {
         filled = true;
         if (holeDepth >= 3) {
-          penalty += (holeDepth - 2) ** 2 * 5;
+          penalty += (holeDepth - 2) ** 2 * 10;
         }
         holeDepth = 0;
       } else if (filled) {
@@ -145,7 +145,7 @@ function countDeepHoles(board: BitBoard): number {
       col >>= 1n;
     }
     if (holeDepth >= 3) {
-      penalty += (holeDepth - 2) ** 2 * 5;
+      penalty += (holeDepth - 2) ** 2 * 10;
     }
   }
   return penalty;
