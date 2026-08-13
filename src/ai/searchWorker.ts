@@ -7,6 +7,7 @@ import type { SearchState, Placement } from './types';
 self.onmessage = (e: MessageEvent) => {
   const data = e.data;
   if (data.type === 'search') {
+    const searchId = data.searchId;
     const state: SearchState = {
       board: BitBoard.fromGrid(data.boardGrid),
       current: data.current,
@@ -28,6 +29,7 @@ self.onmessage = (e: MessageEvent) => {
         (progress) => {
           (self as unknown as DedicatedWorkerGlobalScope).postMessage({
             type: 'progress',
+            searchId,
             depth: progress.depth,
             totalDepth: progress.totalDepth,
             candidates: progress.candidates,
@@ -46,9 +48,9 @@ self.onmessage = (e: MessageEvent) => {
         y: p.y,
         rotation: p.rotation,
       }));
-      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'result', placements });
+      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'result', searchId, placements });
     } catch (err) {
-      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'error', error: String(err) });
+      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'error', searchId, error: String(err) });
     }
   }
 };

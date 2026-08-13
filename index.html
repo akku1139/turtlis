@@ -12,27 +12,14 @@
 
     <!-- 左側: ゲーム表示領域 -->
     <div class="flex flex-col items-center mx-auto lg:mx-0">
-      <!-- キャンバスの描画領域を拡張 -->
-      <canvas id="gameCanvas" width="540" height="620"></canvas>
-
-      <div class="mt-4 grid grid-cols-2 gap-4 text-xs text-slate-400 w-full max-w-[540px] bg-slate-900/60 p-4 rounded-xl border border-slate-800 backdrop-blur-md">
-        <div>
-          <span class="font-bold text-slate-200 text-sm">🕹️ 基本操作:</span>
-          <ul class="list-disc list-inside mt-1.5 space-y-1">
-            <li>[A / D]: 左右移動</li>
-            <li>[W]: <span class="text-amber-400 font-semibold">ソフトドロップ</span></li>
-            <li>[S]: <span class="text-cyan-400 font-semibold">ハードドロップ</span></li>
-            <li>[← / →]: 左右回転</li>
-            <li>[↑]: <span class="text-indigo-400">180度回転</span></li>
-          </ul>
-        </div>
-        <div>
-          <span class="font-bold text-slate-200 text-sm">⚙️ 特殊操作:</span>
-          <ul class="list-disc list-inside mt-1.5 space-y-1">
-            <li>[Shift / C]: <span class="text-emerald-400 font-semibold">ホールド</span></li>
-            <li>[P]: 一時停止 (PAUSE)</li>
-            <li>[R]: リセット・リスタート</li>
-          </ul>
+      <div class="relative">
+        <canvas id="gameCanvas" width="540" height="620"></canvas>
+        <div id="aiStatusOverlay" class="absolute top-2 right-2 bg-slate-900/80 backdrop-blur-md rounded-lg p-2 text-xs text-slate-200 border border-indigo-500/50 shadow-lg hidden">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-indigo-400 animate-pulse"></span>
+            <span id="aiStatusText" class="font-bold">AI OFF</span>
+          </div>
+          <div id="aiStatusDetail" class="text-slate-400 mt-1"></div>
         </div>
       </div>
     </div>
@@ -45,6 +32,26 @@
         </svg>
         ハンドリングチューニング
       </h2>
+
+      <div class="mb-4 text-xs text-slate-400 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+        <div class="font-bold text-slate-200 text-sm mb-1">🕹️ 基本操作</div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <ul class="list-disc list-inside space-y-0.5">
+              <li>[A / D]: 左右移動</li>
+              <li>[W]: <span class="text-amber-400 font-semibold">ソフトドロップ</span></li>
+              <li>[S]: <span class="text-cyan-400 font-semibold">ハードドロップ</span></li>
+            </ul>
+          </div>
+          <div>
+            <ul class="list-disc list-inside space-y-0.5">
+              <li>[← / →]: 左右回転</li>
+              <li>[↑]: <span class="text-indigo-400">180度回転</span></li>
+              <li>[Shift / C]: <span class="text-emerald-400 font-semibold">ホールド</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
 
       <div class="space-y-6 text-sm">
 

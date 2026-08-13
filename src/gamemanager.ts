@@ -44,14 +44,19 @@ export class GameManager {
     toggle?.addEventListener('change', () => {
       this.aiEnabled = toggle.checked;
       const output = document.getElementById('aiOutput');
+      const statusOverlay = document.getElementById('aiStatusOverlay');
+      const statusText = document.getElementById('aiStatusText');
+      if (statusOverlay) statusOverlay.classList.toggle('hidden', !this.aiEnabled);
       if (this.aiEnabled) {
         if (output) output.textContent = 'AI waiting for new piece...';
+        if (statusText) statusText.textContent = 'AI ON';
         this.lastSearchKey = '';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
         this.triggerSearchIfNeeded();
       } else {
         if (output) output.textContent = '';
+        if (statusText) statusText.textContent = 'AI OFF';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
         this.aiPending = false;
@@ -86,7 +91,12 @@ export class GameManager {
     const searchId = this.aiSearchId;
     this.aiBusy = true;
     const output = document.getElementById('aiOutput');
-    if (output) output.textContent = 'AI thinking... (0/?)';
+    const statusDetail = document.getElementById('aiStatusDetail');
+    const statusText = document.getElementById('aiStatusText');
+    if (statusText) statusText.textContent = 'AI ON';
+    const totalDepthGuess = this.core.nextQueue.length + 1;
+    if (output) output.textContent = `Searching... 0/${totalDepthGuess}`;
+    if (statusDetail) statusDetail.textContent = `Depth 0/${totalDepthGuess}`;
 
     this.aiWorker = new Worker(new URL('./ai/searchWorker.ts', import.meta.url), { type: 'module' });
     this.aiWorker.onmessage = (e) => {
@@ -96,6 +106,8 @@ export class GameManager {
       if (data.type === 'result') {
         this.aiBusy = false;
         if (output) output.textContent = JSON.stringify(data.placements, null, 2);
+        if (statusDetail) statusDetail.textContent = 'Finished';
+        if (statusText) statusText.textContent = 'AI ON';
         if (data.placements && data.placements.length > 0) {
           this.aiGhostSequence = data.placements.map(p => ({
             piece: p.piece,
@@ -113,7 +125,8 @@ export class GameManager {
           this.triggerSearchIfNeeded();
         }
       } else if (data.type === 'progress') {
-        if (output) output.textContent = `AI thinking... (${data.depth}/${data.totalDepth}, candidates: ${data.candidates})`;
+        if (output) output.textContent = `Searching... ${data.depth}/${data.totalDepth} (candidates: ${data.candidates})`;
+        if (statusDetail) statusDetail.textContent = `Depth ${data.depth}/${data.totalDepth} | Candidates: ${data.candidates}`;
         if (data.placements) {
           this.aiGhostSequence = data.placements.map(p => ({
             piece: p.piece,
@@ -126,6 +139,8 @@ export class GameManager {
       } else if (data.type === 'error') {
         this.aiBusy = false;
         if (output) output.textContent = 'AI error: ' + data.error;
+        if (statusDetail) statusDetail.textContent = 'Error';
+        if (statusText) statusText.textContent = 'AI ERROR';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
         if (this.aiPending) {

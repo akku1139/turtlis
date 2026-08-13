@@ -155,6 +155,7 @@ export class Renderer {
         const matrix = getMatrix(ghost.piece, ghost.rotation);
         const nAI = matrix.length;
         const alpha = Math.max(0.2, 0.7 - idx * 0.08);
+        const color = MINOS[ghost.piece].color;
         for (let r = 0; r < nAI; r++) {
           for (let c = 0; c < nAI; c++) {
             if (matrix[r][c]) {
@@ -162,11 +163,13 @@ export class Renderer {
               if (drawY >= 0 && drawY < BOARD_VISIBLE_HEIGHT) {
                 const px = this.boardOffsetX + (ghost.x + c) * this.blockSize;
                 const py = this.boardOffsetY + drawY * this.blockSize;
-                this.ctx.fillStyle = `rgba(168, 85, 247, ${alpha * 0.4})`;
+                this.ctx.fillStyle = this.hexToRgba(color, alpha * 0.25);
                 this.ctx.fillRect(px, py, this.blockSize, this.blockSize);
-                this.ctx.strokeStyle = `rgba(168, 85, 247, ${alpha})`;
+                this.ctx.strokeStyle = this.hexToRgba(color, alpha * 0.9);
                 this.ctx.lineWidth = 1.5;
+                this.ctx.setLineDash([4, 3]);
                 this.ctx.strokeRect(px, py, this.blockSize, this.blockSize);
+                this.ctx.setLineDash([]);
               }
             }
           }
