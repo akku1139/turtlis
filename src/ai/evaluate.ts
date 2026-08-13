@@ -67,6 +67,12 @@ export function evaluateState(state: SearchState): number {
   const allClearBonus = isAllClear ? 30.0 : 0.0;
   const allClearB2BBonus = isAllClear && state.difficultClearCount > 1 ? 20.0 : 0.0;
 
+  // 最初のスピンによるB2B開始を強く後押しする
+  const firstSpinB2BBonus =
+    state.lastSpinAction && state.lastCleared > 0 && state.difficultClearCount === 1
+      ? 15.0
+      : 0.0;
+
   // Tスピン単発・B2B連鎖を強く優先する
   const tSpinSingleBonus =
     state.lastSpinAction && state.lastCleared === 1 ? 12.0 : 0.0;
@@ -98,6 +104,7 @@ export function evaluateState(state: SearchState): number {
     allClearBonus +
     allClearB2BBonus -
     b2bBreakPenalty
+    + firstSpinB2BBonus
   );
 }
 
