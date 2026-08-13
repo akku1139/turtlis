@@ -6,11 +6,12 @@ import { evaluateState } from './evaluate.ts';
 export function beamSearch(
   root: SearchState,
   beamWidth: number = 300,
-  maxDepth: number = root.bag.length,
+  maxDepth?: number,
 ): SearchState {
+  const depth = maxDepth ?? root.bag.length + 1;
   let beam: SearchState[] = [root];
 
-  for (let depth = 0; depth < maxDepth; depth++) {
+  for (let d = 0; d < depth; d++) {
     const candidates: SearchState[] = [];
 
     for (const state of beam) {

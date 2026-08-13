@@ -1,6 +1,6 @@
 import type { GameCore } from '../gamecore.ts';
 import { BitBoard } from './bitboard.ts';
-import { SearchState } from './types.ts';
+import type { SearchState, Placement } from './types.ts';
 import { beamSearch } from './beamsearch.ts';
 
 export function buildSearchState(game: GameCore): SearchState {
@@ -26,8 +26,8 @@ export function buildSearchState(game: GameCore): SearchState {
   };
 }
 
-export function suggestBestPlan(game: GameCore): import('./types.ts').Placement[] {
+export function suggestBestPlan(game: GameCore): Placement[] {
   const state = buildSearchState(game);
-  const best = beamSearch(state, 200, state.bag.length);
+  const best = beamSearch(state, 200);
   return best.placements;
 }
