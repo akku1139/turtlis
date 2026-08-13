@@ -8,6 +8,7 @@ export class GameManager {
   renderer: Renderer;
   input: InputManager;
   lastTime: number;
+  aiWorker: Worker | null = null;
 
   constructor() {
     this.core = new GameCore();
@@ -33,21 +34,40 @@ export class GameManager {
 
   suggestAI() {
     if (this.core.state !== 'PLAYING') return;
-    try {
-      const placements = suggestBestPlan(this.core);
-      const aiOutput = document.getElementById('aiOutput');
-      if (aiOutput) {
-        aiOutput.textContent = JSON.stringify(
-          placements.map(p => ({ piece: p.piece, x: p.x, y: p.y, rotation: p.rotation })),
-          null,
-          2
-        );
-      }
-    } catch (e) {
-      console.error(e);
-      const aiOutput = document.getElementById('aiOutput');
-      if (aiOutput) aiOutput.textContent = 'AI error: ' + e;
+
+    const aiBtn = document.getElementById('aiSuggestBtn') as HTMLButtonElement | null;
+    const aiOutput = document.getElementById('aiOutput');
+    if (aiBtn) aiBtn.disabled = true;
+    if (aiOutput) aiOutput.textContent = 'AI thinking...';
+
+    if (!this.aiWorker) {
+      this.aiWorker = new Worker(new URL('./ai/searchWorker.ts', import.meta.url), { type: 'module' });
+      this.aiWorker.onmessage = (e) => {
+        const data = e.data;
+        if (data.type === 'result') {
+          if (aiOutput) aiOutput.textContent = JSON.stringify(data.placements, null, 2);
+        } else if (data.type === 'error') {
+          if (aiOutput) aiOutput.textContent = 'AI error: ' + data.error;
+        }
+        if (aiBtn) aiBtn.disabled = false;
+      };
+      this.aiWorker.onerror = (e) => {
+        if (aiOutput) aiOutput.textContent = 'Worker error: ' + e.message;
+        if (aiBtn) aiBtn.disabled = false;
+      };
     }
+
+    this.aiWorker.postMessage({
+      type: 'search',
+      boardGrid: this.core.board.grid,
+      current: this.core.currentMino.type,
+      bag: this.core.nextQueue.slice(),
+      hold: this.core.holdType,
+      canHold: this.core.canHold,
+      comboCount: this.core.comboCount,
+      difficultClearCount: this.core.difficultClearCount,
+      beamWidth: 200,
+    });
   }
 
   start() {
