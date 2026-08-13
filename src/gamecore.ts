@@ -53,6 +53,7 @@ export class GameCore {
     preventAccident: boolean,
     cancelDasOnDir: boolean,
     preferMovement: boolean,
+    gravityZero: boolean,
     irs: InitialSystemOption,
     ihs: InitialSystemOption,
   };
@@ -116,6 +117,7 @@ export class GameCore {
       preventAccident: true,
       cancelDasOnDir: false,
       preferMovement: true,
+      gravityZero: false,
       irs: 'TAP',
       ihs: 'TAP',
     };
@@ -154,6 +156,7 @@ export class GameCore {
     this.config.preventAccident = (document.getElementById('cfgPreventAccident') as HTMLInputElement).checked;
     this.config.cancelDasOnDir = (document.getElementById('cfgCancelDasOnDir') as HTMLInputElement).checked;
     this.config.preferMovement = (document.getElementById('cfgPreferMovement') as HTMLInputElement).checked;
+    this.config.gravityZero = (document.getElementById('cfgGravityZero') as HTMLInputElement).checked;
     this.config.irs = (document.getElementById('cfgIRS') as HTMLSelectElement).value as InitialSystemOption;
     this.config.ihs = (document.getElementById('cfgIHS') as HTMLSelectElement).value as InitialSystemOption;
 
@@ -264,6 +267,11 @@ export class GameCore {
 
     if (this.dcdTimer > 0) {
       this.dcdTimer -= dt;
+    }
+
+    if (this.config.gravityZero) {
+      // 重力0モード：自動落下・接地ロックを行わない
+      return;
     }
 
     this.gravityDelay = Math.max(16.67, Math.pow(0.8 - (this.level - 1) * 0.007, this.level - 1) * 1000);

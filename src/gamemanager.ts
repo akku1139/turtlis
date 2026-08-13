@@ -4,6 +4,8 @@ import { Renderer } from './renderer.ts';
 import { Tetromino } from './tetromino.ts';
 import { getMatrix } from './ai/pure.ts';
 import type { MinoType, MinoState } from './types.ts';
+import { BitBoard } from './ai/bitboard.ts';
+import { TemplateStock } from './ai/templatestock.ts';
 
 export class GameManager {
   core: GameCore;
@@ -18,6 +20,7 @@ export class GameManager {
   lastSearchKey: string = '';
   aiAutoEnabled: boolean = false;
   aiGhostSequence: Array<{ piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
+  private templateStock = new TemplateStock();
 
   constructor() {
     this.core = new GameCore();
@@ -32,7 +35,7 @@ export class GameManager {
   }
 
   setupConfigListeners() {
-    const elements = ['cfgARR', 'cfgDAS', 'cfgDCD', 'cfgSDF', 'cfgPreventAccident', 'cfgCancelDasOnDir', 'cfgPreferMovement', 'cfgKickTable', 'cfgIRS', 'cfgIHS'];
+    const elements = ['cfgARR', 'cfgDAS', 'cfgDCD', 'cfgSDF', 'cfgPreventAccident', 'cfgCancelDasOnDir', 'cfgPreferMovement', 'cfgGravityZero', 'cfgKickTable', 'cfgIRS', 'cfgIHS'];
     elements.forEach(id => {
       const el = document.getElementById(id);
       if(el) {
@@ -53,18 +56,29 @@ export class GameManager {
       const statusOverlay = document.getElementById('aiStatusOverlay');
       const statusText = document.getElementById('aiStatusText');
       const statusDetail = document.getElementById('aiStatusDetail');
+      const stockCount = document.getElementById('aiStockCount');
       if (statusOverlay) statusOverlay.classList.toggle('hidden', !this.aiEnabled);
       if (this.aiEnabled) {
         if (statusText) statusText.textContent = this.aiAutoEnabled ? 'AI AUTO' : 'AI ON';
         if (output) output.textContent = 'AI waiting for new piece...';
+        if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
         this.lastSearchKey = '';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
         this.triggerSearchIfNeeded();
+
+        if (this.aiAutoEnabled) {
+          const gz = document.getElementById('cfgGravityZero') as HTMLInputElement | null;
+          if (gz) {
+            gz.checked = true;
+            this.core.updateConfigFromUI();
+          }
+        }
       } else {
         if (output) output.textContent = '';
         if (statusText) statusText.textContent = 'AI OFF';
         if (statusDetail) statusDetail.textContent = '';
+        if (stockCount) stockCount.textContent = '';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
         this.aiPending = false;
@@ -92,6 +106,26 @@ export class GameManager {
     if (key === this.lastSearchKey) return;
     this.lastSearchKey = key;
 
+    // テンプレートストックを先に照会
+    const board = BitBoard.fromGrid(this.core.board.grid);
+    const stockResult = this.templateStock.query(
+      board,
+      this.core.currentMino.type,
+      this.core.nextQueue,
+      this.core.holdType,
+    );
+    if (stockResult) {
+      this.aiBusy = false;
+      this.aiGhostSequence = stockResult.placements;
+      this.renderer.setAIGhostSequence(this.aiGhostSequence);
+      const stockCount = document.getElementById('aiStockCount');
+      if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
+      if (this.aiAutoEnabled && this.aiGhostSequence.length > 0) {
+        this.executeAIPlacement(this.aiGhostSequence[0]);
+      }
+      return;
+    }
+
     // 新しい探索を開始する前に、実行中なら古いワーカーを終了
     if (this.aiWorker) {
       this.aiWorker.terminate();
@@ -107,6 +141,8 @@ export class GameManager {
     const statusDetail = document.getElementById('aiStatusDetail');
     const statusText = document.getElementById('aiStatusText');
     if (statusText) statusText.textContent = 'AI ON';
+    const stockCount = document.getElementById('aiStockCount');
+    if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
     const totalDepthGuess = this.core.nextQueue.length + 1;
     if (output) output.textContent = `Searching... 0/${totalDepthGuess}`;
     if (statusDetail) statusDetail.textContent = `Depth 0/${totalDepthGuess}`;
@@ -121,6 +157,7 @@ export class GameManager {
         if (output) output.textContent = JSON.stringify(data.placements, null, 2);
         if (statusDetail) statusDetail.textContent = 'Finished';
         if (statusText) statusText.textContent = this.aiAutoEnabled ? 'AI AUTO' : 'AI ON';
+        if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
         if (data.placements && data.placements.length > 0) {
           this.aiGhostSequence = data.placements.map(p => ({
             piece: p.piece,
@@ -134,6 +171,20 @@ export class GameManager {
           this.aiGhostSequence = [];
         }
         this.renderer.setAIGhostSequence(this.aiGhostSequence);
+
+        // 結果をテンプレートストックに追加
+        if (data.placements && data.placements.length > 0) {
+          this.templateStock.store(
+            BitBoard.fromGrid(this.core.board.grid),
+            this.core.currentMino.type,
+            this.core.nextQueue.slice(),
+            this.core.holdType,
+            data.placements,
+            data.attack ?? 0,
+          );
+          if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
+        }
+
         if (this.aiAutoEnabled && this.aiGhostSequence.length > 0) {
           this.executeAIPlacement(this.aiGhostSequence[0]);
         }

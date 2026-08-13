@@ -52,7 +52,12 @@ self.onmessage = (e: MessageEvent) => {
         lastActionWasRotation: p.lastActionWasRotation,
         lastKickIndex: p.lastKickIndex,
       }));
-      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'result', searchId, placements });
+      (self as unknown as DedicatedWorkerGlobalScope).postMessage({
+        type: 'result',
+        searchId,
+        placements,
+        attack: best.accumulatedAttack,
+      });
     } catch (err) {
       (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'error', searchId, error: String(err) });
     }
