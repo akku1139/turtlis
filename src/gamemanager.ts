@@ -23,6 +23,7 @@ export class GameManager {
   private templateStock = new TemplateStock();
   aiContinuousEnabled: boolean = false;
   private aiWarmStartPlacements: Array<{ piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
+  private lastProcessedPiecesPlaced = -1;
 
   constructor() {
     this.core = new GameCore();
@@ -108,6 +109,13 @@ export class GameManager {
 
   private triggerSearchIfNeeded() {
     if (!this.aiEnabled || this.core.state !== 'PLAYING') return;
+
+    // ピース設置回数が変化したら前回キーをリセット
+    if (this.core.piecesPlaced !== this.lastProcessedPiecesPlaced) {
+      this.lastSearchKey = '';
+      this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
+    }
+
     const key = this.getSearchKey();
     if (key === this.lastSearchKey) return;
     this.lastSearchKey = key;
@@ -287,9 +295,6 @@ export class GameManager {
     this.aiBusy = false;
     this.aiGhostSequence = [];
     this.renderer.setAIGhostSequence([]);
-    if (this.aiContinuousEnabled && this.aiAutoEnabled) {
-      this.triggerSearchIfNeeded();
-    }
   }
 
   start() {
