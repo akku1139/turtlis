@@ -16,6 +16,11 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const checkerParity = getCheckerParity(board);
   const verticalParity = getVerticalParity(heights);
   const maxDeepHoleDepth = getMaxDeepHoleDepth(board);
+  const sideAvg = (heights[0] + heights[1] + heights[8] + heights[9]) / 4;
+  const allAvg = heights.reduce((a, b) => a + b, 0) / BOARD_WIDTH;
+  const sideCoverage = (sideAvg - allAvg) * 2.0;
+  const centerTowerPenalty =
+    Math.max(0, (heights[4] + heights[5]) / 2 - sideAvg - 2) * 3.0;
 
   // Iミノが現在・ホールド・近いネクストにいるか
   const iAvailableSoon =
@@ -49,7 +54,9 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
     -rowTransitions * 0.3 +
     calcParityBalance(heights) * 0.6 -
     (checkerParity !== 0 ? 1.5 : 0) -
-    (verticalParity !== 0 ? 1.5 : 0);
+    (verticalParity !== 0 ? 1.5 : 0) +
+    sideCoverage -
+    centerTowerPenalty;
 
   return {
     total: b2bPotential,
