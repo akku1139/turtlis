@@ -73,6 +73,10 @@ export function evaluateState(state: SearchState): number {
       ? 15.0
       : 0.0;
 
+  // Tを保持または現在Tでスピン受けがある場合の加点
+  const holdTSlotBonus = state.hold === 'T' && terrain.tSlotCount > 0 ? 3.0 : 0.0;
+  const currentTSlotBonus = state.current === 'T' && terrain.tSlotCount > 0 ? 2.0 : 0.0;
+
   // Tスピン単発・B2B連鎖を強く優先する
   const tSpinSingleBonus =
     state.lastSpinAction && state.lastCleared === 1 ? 12.0 : 0.0;
@@ -104,7 +108,9 @@ export function evaluateState(state: SearchState): number {
     allClearBonus +
     allClearB2BBonus -
     b2bBreakPenalty
-    + firstSpinB2BBonus
+    + firstSpinB2BBonus +
+    holdTSlotBonus +
+    currentTSlotBonus
   );
 }
 
