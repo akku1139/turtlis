@@ -11,7 +11,7 @@ export class Renderer {
   readonly blockSize: number;
   readonly boardOffsetX: number;
   readonly boardOffsetY: number;
-  aiGhostSequence: Array<{ piece: MinoType; rotation: import('./types.ts').MinoState; x: number; y: number }> = [];
+  aiGhostSequence: Array<{ piece: MinoType; rotation: import('./types.ts').MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
 
   constructor(canvasId: string) {
     const canvas = document.getElementById(canvasId);
@@ -83,7 +83,7 @@ export class Renderer {
     }
   }
 
-  setAIGhostSequence(sequence: Array<{ piece: MinoType; rotation: import('./types.ts').MinoState; x: number; y: number }>) {
+  setAIGhostSequence(sequence: Array<{ piece: MinoType; rotation: import('./types.ts').MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }>) {
     this.aiGhostSequence = sequence;
   }
 

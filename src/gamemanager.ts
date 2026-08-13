@@ -1,7 +1,9 @@
 import { GameCore } from './gamecore.ts';
 import { InputManager } from './inputmanager.ts';
 import { Renderer } from './renderer.ts';
-import type { Placement } from './ai/types.ts';
+import { Tetromino } from './tetromino.ts';
+import { getMatrix } from './ai/pure.ts';
+import type { MinoType, MinoState } from './types.ts';
 
 export class GameManager {
   core: GameCore;
@@ -14,7 +16,8 @@ export class GameManager {
   aiPending: boolean = false;
   aiSearchId: number = 0;
   lastSearchKey: string = '';
-  aiGhostSequence: Array<{ piece: import('./types.ts').MinoType; rotation: import('./types.ts').MinoState; x: number; y: number }> = [];
+  aiAutoEnabled: boolean = false;
+  aiGhostSequence: Array<{ piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
 
   constructor() {
     this.core = new GameCore();
@@ -41,15 +44,19 @@ export class GameManager {
 
   setupAI() {
     const toggle = document.getElementById('aiToggle') as HTMLInputElement | null;
-    toggle?.addEventListener('change', () => {
-      this.aiEnabled = toggle.checked;
+    const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
+
+    const updateAIEnabled = () => {
+      this.aiEnabled = toggle?.checked ?? false;
+      this.aiAutoEnabled = autoToggle?.checked ?? false;
       const output = document.getElementById('aiOutput');
       const statusOverlay = document.getElementById('aiStatusOverlay');
       const statusText = document.getElementById('aiStatusText');
+      const statusDetail = document.getElementById('aiStatusDetail');
       if (statusOverlay) statusOverlay.classList.toggle('hidden', !this.aiEnabled);
       if (this.aiEnabled) {
+        if (statusText) statusText.textContent = this.aiAutoEnabled ? 'AI AUTO' : 'AI ON';
         if (output) output.textContent = 'AI waiting for new piece...';
-        if (statusText) statusText.textContent = 'AI ON';
         this.lastSearchKey = '';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
@@ -57,6 +64,7 @@ export class GameManager {
       } else {
         if (output) output.textContent = '';
         if (statusText) statusText.textContent = 'AI OFF';
+        if (statusDetail) statusDetail.textContent = '';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
         this.aiPending = false;
@@ -66,7 +74,12 @@ export class GameManager {
         }
         this.aiBusy = false;
       }
-    });
+    };
+
+    toggle?.addEventListener('change', updateAIEnabled);
+    autoToggle?.addEventListener('change', updateAIEnabled);
+
+    updateAIEnabled();
   }
 
   private getSearchKey(): string {
@@ -107,18 +120,23 @@ export class GameManager {
         this.aiBusy = false;
         if (output) output.textContent = JSON.stringify(data.placements, null, 2);
         if (statusDetail) statusDetail.textContent = 'Finished';
-        if (statusText) statusText.textContent = 'AI ON';
+        if (statusText) statusText.textContent = this.aiAutoEnabled ? 'AI AUTO' : 'AI ON';
         if (data.placements && data.placements.length > 0) {
           this.aiGhostSequence = data.placements.map(p => ({
             piece: p.piece,
             rotation: p.rotation,
             x: p.x,
             y: p.y,
+            lastActionWasRotation: p.lastActionWasRotation,
+            lastKickIndex: p.lastKickIndex,
           }));
         } else {
           this.aiGhostSequence = [];
         }
         this.renderer.setAIGhostSequence(this.aiGhostSequence);
+        if (this.aiAutoEnabled && this.aiGhostSequence.length > 0) {
+          this.executeAIPlacement(this.aiGhostSequence[0]);
+        }
         // 終了後、新たな探索が必要か確認
         if (this.aiPending) {
           this.aiPending = false;
@@ -133,6 +151,8 @@ export class GameManager {
             rotation: p.rotation,
             x: p.x,
             y: p.y,
+            lastActionWasRotation: p.lastActionWasRotation,
+            lastKickIndex: p.lastKickIndex,
           }));
           this.renderer.setAIGhostSequence(this.aiGhostSequence);
         }
@@ -172,6 +192,22 @@ export class GameManager {
       difficultClearCount: this.core.difficultClearCount,
       beamWidth: 80,
     });
+  }
+
+  private executeAIPlacement(p: { piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }) {
+    if (this.core.state !== 'PLAYING') return;
+    if (p.piece !== this.core.currentMino.type) {
+      this.core.executeHold();
+    }
+    const tetro = new Tetromino(p.piece);
+    tetro.state = p.rotation;
+    tetro.matrix = getMatrix(p.piece, p.rotation);
+    this.core.currentMino = tetro;
+    this.core.minoX = p.x;
+    this.core.minoY = p.y;
+    this.core.lastActionWasRotation = p.lastActionWasRotation ?? false;
+    this.core.lastKickIndex = p.lastKickIndex ?? 0;
+    this.core.lockPiece();
   }
 
   start() {

@@ -13,19 +13,18 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const centerStackHeight = (heights[4] + heights[5]) / 2;
 
   const hazard =
-    (maxHeight > 18 ? (maxHeight - 18) * 10 : 0) +
+    (maxHeight > 18 ? (maxHeight - 18) * 5 : 0) +
     holes * 5 +
-    (quadWellDepth < 2 ? 5 : 0) +
-    (tSlotCount === 0 ? 10 : 0);
+    (maxHeight > 20 ? 20 : 0);
 
   const b2bPotential =
-    tSlotCount * 3.0 +
+    tSlotCount * 2.0 +
     quadWellDepth * 1.5 +
-    (state.difficultClearCount > 1 ? state.difficultClearCount * 2.0 : 0) +
+    (state.difficultClearCount > 1 ? state.difficultClearCount * 1.0 : 0) +
     centerStackHeight * 0.4 +
     -bumpiness * 0.5 +
-    -holes * 2.0 +
-    -rowTransitions * 0.2 +
+    -holes * 1.5 +
+    -rowTransitions * 0.1 +
     calcParityBalance(heights) * 0.8;
 
   return {
@@ -40,7 +39,7 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
 
 export function evaluateState(state: SearchState): number {
   const terrain = computeTerrainScore(state);
-  return state.accumulatedAttack + 0.3 * terrain.total - 100 * terrain.hazard;
+  return state.accumulatedAttack * 10 + terrain.total * 0.5 - terrain.hazard * 2;
 }
 
 function columnHeights(board: import('./bitboard.ts').BitBoard): number[] {

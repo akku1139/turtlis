@@ -38,6 +38,8 @@ self.onmessage = (e: MessageEvent) => {
               rotation: p.rotation,
               x: p.x,
               y: p.y,
+              lastActionWasRotation: p.lastActionWasRotation,
+              lastKickIndex: p.lastKickIndex,
             })),
           });
         },
@@ -47,6 +49,8 @@ self.onmessage = (e: MessageEvent) => {
         x: p.x,
         y: p.y,
         rotation: p.rotation,
+        lastActionWasRotation: p.lastActionWasRotation,
+        lastKickIndex: p.lastKickIndex,
       }));
       (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: 'result', searchId, placements });
     } catch (err) {
