@@ -380,6 +380,7 @@ export class GameManager {
     if (this.core.board.collides(matrix, p.x, p.y)) {
       this.aiGhostSequence = [];
       this.renderer.setAIGhostSequence([]);
+      this.aiWarmStartPlacements = [];
       this.lastSearchKey = '';
       return;
     }
@@ -392,11 +393,18 @@ export class GameManager {
     this.core.lastKickIndex = p.lastKickIndex ?? 0;
     this.core.lockPiece();
 
+    const remaining = this.aiGhostSequence.slice(1);
     this.lastSearchKey = '';
     this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
-    this.aiGhostSequence = [];
-    this.renderer.setAIGhostSequence([]);
-    this.aiWarmStartPlacements = [];
+    this.aiGhostSequence = remaining;
+    this.renderer.setAIGhostSequence(remaining);
+    this.aiWarmStartPlacements = remaining;
+
+    if (this.aiAutoEnabled && remaining.length > 0) {
+      this.aiQueuedPlacement = remaining[0];
+    } else {
+      this.aiQueuedPlacement = null;
+    }
   }
 
   start() {
