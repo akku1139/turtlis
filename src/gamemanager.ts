@@ -50,11 +50,19 @@ export class GameManager {
     const toggle = document.getElementById('aiToggle') as HTMLInputElement | null;
     const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
     const continuousToggle = document.getElementById('aiContinuousToggle') as HTMLInputElement | null;
+    const gravityZeroCheckbox = document.getElementById('cfgGravityZero') as HTMLInputElement | null;
 
     const updateAIEnabled = () => {
       this.aiEnabled = toggle?.checked ?? false;
       this.aiAutoEnabled = autoToggle?.checked ?? false;
       this.aiContinuousEnabled = continuousToggle?.checked ?? false;
+      if (gravityZeroCheckbox) {
+        gravityZeroCheckbox.disabled = this.aiAutoEnabled;
+        if (this.aiAutoEnabled) {
+          gravityZeroCheckbox.checked = true;
+          this.core.updateConfigFromUI();
+        }
+      }
       const output = document.getElementById('aiOutput');
       const statusOverlay = document.getElementById('aiStatusOverlay');
       const statusText = document.getElementById('aiStatusText');
@@ -69,14 +77,6 @@ export class GameManager {
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
         this.triggerSearchIfNeeded();
-
-        if (this.aiAutoEnabled) {
-          const gz = document.getElementById('cfgGravityZero') as HTMLInputElement | null;
-          if (gz) {
-            gz.checked = true;
-            this.core.updateConfigFromUI();
-          }
-        }
       } else {
         if (output) output.textContent = '';
         if (statusText) statusText.textContent = 'AI OFF';
@@ -257,18 +257,24 @@ export class GameManager {
   private executeAIPlacement(p: { piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }) {
     if (this.core.state !== 'PLAYING') return;
     if (p.piece !== this.core.currentMino.type) {
-      // ホールドを実行して現在ミノを合わせる
+      if (!this.core.canHold) return; // ホールドできない場合は実行不能
       this.core.hold();
+      // hold後、現在のミノがp.pieceになっているはず
+      if (this.core.currentMino.type !== p.piece) return; // それでも一致しない場合は諦める
     }
-    const tetro = new Tetromino(p.piece);
-    tetro.state = p.rotation;
-    tetro.matrix = getMatrix(p.piece, p.rotation);
-    this.core.currentMino = tetro;
+    // 現在のミノを指定回転に設定
+    this.core.currentMino.state = p.rotation;
+    this.core.currentMino.matrix = getMatrix(p.piece, p.rotation);
     this.core.minoX = p.x;
     this.core.minoY = p.y;
     this.core.lastActionWasRotation = p.lastActionWasRotation ?? false;
     this.core.lastKickIndex = p.lastKickIndex ?? 0;
     this.core.lockPiece();
+    // 設置後、AIの探索状態をリセットして新たな探索を促す
+    this.lastSearchKey = '';
+    this.aiBusy = false;
+    this.aiGhostSequence = [];
+    this.renderer.setAIGhostSequence([]);
   }
 
   start() {
