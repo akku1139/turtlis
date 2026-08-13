@@ -26,7 +26,7 @@ self.onmessage = (e: MessageEvent) => {
       const best = beamSearch(
         state,
         data.beamWidth ?? 50,
-        undefined,
+        data.maxDepth,
         (progress) => {
           (self as unknown as DedicatedWorkerGlobalScope).postMessage({
             type: 'progress',

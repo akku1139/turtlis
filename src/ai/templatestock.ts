@@ -15,6 +15,8 @@ interface StockEntry {
   }>;
   expectedAttack: number;
   bagKey: string;
+  current: MinoType;
+  hold: MinoType | null;
 }
 
 export class TemplateStock {
@@ -89,6 +91,7 @@ export class TemplateStock {
     let best: StockEntry | null = null;
     let bestDist = Infinity;
     for (const entry of this.entries.values()) {
+      if (entry.current !== current) continue;
       const dist = this.similarity(features, entry.features);
       if (dist < bestDist) {
         bestDist = dist;
@@ -119,6 +122,8 @@ export class TemplateStock {
       placements,
       expectedAttack,
       bagKey: bag.join(','),
+      current,
+      hold,
     });
 
     if (this.entries.size > this.maxEntries) {
