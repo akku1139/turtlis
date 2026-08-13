@@ -43,6 +43,7 @@ self.onmessage = (e: MessageEvent) => {
             })),
           });
         },
+        data.warmStartPlacements,
       );
       const placements = best.placements.map(p => ({
         piece: p.piece,

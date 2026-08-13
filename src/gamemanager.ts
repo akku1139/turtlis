@@ -22,6 +22,7 @@ export class GameManager {
   aiGhostSequence: Array<{ piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
   private templateStock = new TemplateStock();
   aiContinuousEnabled: boolean = false;
+  private aiWarmStartPlacements: Array<{ piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
 
   constructor() {
     this.core = new GameCore();
@@ -76,6 +77,7 @@ export class GameManager {
         this.lastSearchKey = '';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
+        this.aiWarmStartPlacements = [];
         this.triggerSearchIfNeeded();
       } else {
         if (output) output.textContent = '';
@@ -121,11 +123,17 @@ export class GameManager {
     if (stockResult) {
       this.aiBusy = false;
       this.aiGhostSequence = stockResult.placements;
+      this.aiWarmStartPlacements = stockResult.placements.slice(1);
       this.renderer.setAIGhostSequence(this.aiGhostSequence);
       const stockCount = document.getElementById('aiStockCount');
       if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
       if (this.aiAutoEnabled && this.aiGhostSequence.length > 0) {
         this.executeAIPlacement(this.aiGhostSequence[0]);
+        if (!this.aiContinuousEnabled) {
+          const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
+          if (autoToggle) autoToggle.checked = false;
+          this.aiAutoEnabled = false;
+        }
       }
       return;
     }
@@ -171,8 +179,10 @@ export class GameManager {
             lastActionWasRotation: p.lastActionWasRotation,
             lastKickIndex: p.lastKickIndex,
           }));
+          this.aiWarmStartPlacements = this.aiGhostSequence.slice(1);
         } else {
           this.aiGhostSequence = [];
+          this.aiWarmStartPlacements = [];
         }
         this.renderer.setAIGhostSequence(this.aiGhostSequence);
 
@@ -251,7 +261,9 @@ export class GameManager {
       comboCount: this.core.comboCount,
       difficultClearCount: this.core.difficultClearCount,
       beamWidth: 50,
+      warmStartPlacements: this.aiWarmStartPlacements,
     });
+    this.aiWarmStartPlacements = [];
   }
 
   private executeAIPlacement(p: { piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }) {
@@ -275,6 +287,9 @@ export class GameManager {
     this.aiBusy = false;
     this.aiGhostSequence = [];
     this.renderer.setAIGhostSequence([]);
+    if (this.aiContinuousEnabled && this.aiAutoEnabled) {
+      this.triggerSearchIfNeeded();
+    }
   }
 
   start() {
