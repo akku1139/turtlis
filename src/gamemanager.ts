@@ -12,8 +12,9 @@ export class GameManager {
   aiEnabled: boolean = false;
   aiBusy: boolean = false;
   aiPending: boolean = false;
+  aiSearchId: number = 0;
   lastSearchKey: string = '';
-  aiResult: Placement | null = null;
+  aiGhostSequence: Array<{ piece: import('./types.ts').MinoType; rotation: import('./types.ts').MinoState; x: number; y: number }> = [];
 
   constructor() {
     this.core = new GameCore();
@@ -46,11 +47,19 @@ export class GameManager {
       if (this.aiEnabled) {
         if (output) output.textContent = 'AI waiting for new piece...';
         this.lastSearchKey = '';
+        this.aiGhostSequence = [];
+        this.renderer.setAIGhostSequence([]);
         this.triggerSearchIfNeeded();
       } else {
         if (output) output.textContent = '';
-        this.renderer.setAIGhost(null);
+        this.aiGhostSequence = [];
+        this.renderer.setAIGhostSequence([]);
         this.aiPending = false;
+        if (this.aiWorker) {
+          this.aiWorker.terminate();
+          this.aiWorker = null;
+        }
+        this.aiBusy = false;
       }
     });
   }
@@ -64,64 +73,81 @@ export class GameManager {
     const key = this.getSearchKey();
     if (key === this.lastSearchKey) return;
     this.lastSearchKey = key;
-    if (this.aiBusy) {
-      this.aiPending = true;
-      return;
+
+    // 新しい探索を開始する前に、実行中なら古いワーカーを終了
+    if (this.aiWorker) {
+      this.aiWorker.terminate();
+      this.aiWorker = null;
     }
+    this.aiBusy = false;
+    this.aiPending = false;
+    this.aiSearchId++;
+
+    const searchId = this.aiSearchId;
     this.aiBusy = true;
     const output = document.getElementById('aiOutput');
-    if (output) output.textContent = 'AI thinking...';
+    if (output) output.textContent = 'AI thinking... (0/?)';
 
-    if (!this.aiWorker) {
-      this.aiWorker = new Worker(new URL('./ai/searchWorker.ts', import.meta.url), { type: 'module' });
-      this.aiWorker.onmessage = (e) => {
-        const data = e.data;
-        if (data.type === 'result') {
-          this.aiBusy = false;
-          if (output) output.textContent = JSON.stringify(data.placements, null, 2);
-          if (data.placements && data.placements.length > 0) {
-            const first = data.placements[0];
-            this.renderer.setAIGhost({
-              piece: first.piece,
-              rotation: first.rotation,
-              x: first.x,
-              y: first.y,
-              matrix: [], // renderer 側で再構築
-              lastActionWasRotation: false,
-              lastKickIndex: 0,
-            });
-          } else {
-            this.renderer.setAIGhost(null);
-          }
-          if (this.aiPending) {
-            this.aiPending = false;
-            this.triggerSearchIfNeeded();
-          }
-        } else if (data.type === 'progress') {
-          if (output) output.textContent = `AI thinking... (${data.depth}/${data.totalDepth}, candidates: ${data.candidates})`;
-        } else if (data.type === 'error') {
-          this.aiBusy = false;
-          if (output) output.textContent = 'AI error: ' + data.error;
-          this.renderer.setAIGhost(null);
-          if (this.aiPending) {
-            this.aiPending = false;
-            this.triggerSearchIfNeeded();
-          }
-        }
-      };
-      this.aiWorker.onerror = (e) => {
+    this.aiWorker = new Worker(new URL('./ai/searchWorker.ts', import.meta.url), { type: 'module' });
+    this.aiWorker.onmessage = (e) => {
+      const data = e.data;
+      if (data.searchId !== searchId) return; // 古い探索の結果は無視
+
+      if (data.type === 'result') {
         this.aiBusy = false;
-        if (output) output.textContent = 'Worker error: ' + e.message;
-        this.renderer.setAIGhost(null);
+        if (output) output.textContent = JSON.stringify(data.placements, null, 2);
+        if (data.placements && data.placements.length > 0) {
+          this.aiGhostSequence = data.placements.map(p => ({
+            piece: p.piece,
+            rotation: p.rotation,
+            x: p.x,
+            y: p.y,
+          }));
+        } else {
+          this.aiGhostSequence = [];
+        }
+        this.renderer.setAIGhostSequence(this.aiGhostSequence);
+        // 終了後、新たな探索が必要か確認
         if (this.aiPending) {
           this.aiPending = false;
           this.triggerSearchIfNeeded();
         }
-      };
-    }
+      } else if (data.type === 'progress') {
+        if (output) output.textContent = `AI thinking... (${data.depth}/${data.totalDepth}, candidates: ${data.candidates})`;
+        if (data.placements) {
+          this.aiGhostSequence = data.placements.map(p => ({
+            piece: p.piece,
+            rotation: p.rotation,
+            x: p.x,
+            y: p.y,
+          }));
+          this.renderer.setAIGhostSequence(this.aiGhostSequence);
+        }
+      } else if (data.type === 'error') {
+        this.aiBusy = false;
+        if (output) output.textContent = 'AI error: ' + data.error;
+        this.aiGhostSequence = [];
+        this.renderer.setAIGhostSequence([]);
+        if (this.aiPending) {
+          this.aiPending = false;
+          this.triggerSearchIfNeeded();
+        }
+      }
+    };
+    this.aiWorker.onerror = (e) => {
+      this.aiBusy = false;
+      if (output) output.textContent = 'Worker error: ' + e.message;
+      this.aiGhostSequence = [];
+      this.renderer.setAIGhostSequence([]);
+      if (this.aiPending) {
+        this.aiPending = false;
+        this.triggerSearchIfNeeded();
+      }
+    };
 
     this.aiWorker.postMessage({
       type: 'search',
+      searchId,
       boardGrid: this.core.board.grid,
       current: this.core.currentMino.type,
       bag: this.core.nextQueue.slice(),

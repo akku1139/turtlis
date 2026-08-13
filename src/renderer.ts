@@ -11,7 +11,7 @@ export class Renderer {
   readonly blockSize: number;
   readonly boardOffsetX: number;
   readonly boardOffsetY: number;
-  aiGhost: Placement | null = null;
+  aiGhostSequence: Array<{ piece: MinoType; rotation: import('./types.ts').MinoState; x: number; y: number }> = [];
 
   constructor(canvasId: string) {
     const canvas = document.getElementById(canvasId);
@@ -83,8 +83,8 @@ export class Renderer {
     }
   }
 
-  setAIGhost(placement: Placement | null) {
-    this.aiGhost = placement;
+  setAIGhostSequence(sequence: Array<{ piece: MinoType; rotation: import('./types.ts').MinoState; x: number; y: number }>) {
+    this.aiGhostSequence = sequence;
   }
 
   render(core: GameCore) {
@@ -150,21 +150,28 @@ export class Renderer {
         }
       }
 
-      // AIゴースト表示（提案された1手目）
-      if (this.aiGhost) {
-        const matrix = getMatrix(this.aiGhost.piece, this.aiGhost.rotation as import('./types.ts').MinoState);
+      // AIゴーストシーケンス表示（複数手、透明度を変えて描画）
+      this.aiGhostSequence.forEach((ghost, idx) => {
+        const matrix = getMatrix(ghost.piece, ghost.rotation);
         const nAI = matrix.length;
+        const alpha = Math.max(0.2, 0.7 - idx * 0.08);
         for (let r = 0; r < nAI; r++) {
           for (let c = 0; c < nAI; c++) {
             if (matrix[r][c]) {
-              const drawY = this.aiGhost.y + r - BOARD_HIDDEN_HEIGHT;
+              const drawY = ghost.y + r - BOARD_HIDDEN_HEIGHT;
               if (drawY >= 0 && drawY < BOARD_VISIBLE_HEIGHT) {
-                this.drawGridBlock(this.aiGhost.x + c, drawY, this.aiGhost.piece, true);
+                const px = this.boardOffsetX + (ghost.x + c) * this.blockSize;
+                const py = this.boardOffsetY + drawY * this.blockSize;
+                this.ctx.fillStyle = `rgba(168, 85, 247, ${alpha * 0.4})`;
+                this.ctx.fillRect(px, py, this.blockSize, this.blockSize);
+                this.ctx.strokeStyle = `rgba(168, 85, 247, ${alpha})`;
+                this.ctx.lineWidth = 1.5;
+                this.ctx.strokeRect(px, py, this.blockSize, this.blockSize);
               }
             }
           }
         }
-      }
+      });
     }
 
     if (isDanger && core.state === 'PLAYING' && core.nextQueue.length > 0) {

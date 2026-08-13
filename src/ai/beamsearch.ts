@@ -7,7 +7,12 @@ export function beamSearch(
   root: SearchState,
   beamWidth: number = 80,
   maxDepth?: number,
-  onProgress?: (info: { depth: number; totalDepth: number; candidates: number }) => void,
+  onProgress?: (info: {
+    depth: number;
+    totalDepth: number;
+    candidates: number;
+    bestState: SearchState;
+  }) => void,
 ): SearchState {
   const depth = maxDepth ?? root.bag.length + 1;
   let beam: SearchState[] = [root];
@@ -105,7 +110,12 @@ export function beamSearch(
     beam = unique.slice(0, beamWidth);
 
     if (onProgress) {
-      onProgress({ depth: d + 1, totalDepth: depth, candidates: unique.length });
+      onProgress({
+        depth: d + 1,
+        totalDepth: depth,
+        candidates: unique.length,
+        bestState: beam[0],
+      });
     }
   }
 

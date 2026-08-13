@@ -28,7 +28,15 @@ self.onmessage = (e: MessageEvent) => {
         (progress) => {
           (self as unknown as DedicatedWorkerGlobalScope).postMessage({
             type: 'progress',
-            ...progress,
+            depth: progress.depth,
+            totalDepth: progress.totalDepth,
+            candidates: progress.candidates,
+            placements: progress.bestState.placements.map(p => ({
+              piece: p.piece,
+              rotation: p.rotation,
+              x: p.x,
+              y: p.y,
+            })),
           });
         },
       );
