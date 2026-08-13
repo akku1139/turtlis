@@ -13,6 +13,8 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const tSlotCount = countTSlotShapes(board);
   const quadWellDepth = tetrisWellDepth(board);
   const centerStackHeight = (heights[4] + heights[5]) / 2;
+  const checkerParity = getCheckerParity(board);
+  const verticalParity = getVerticalParity(heights);
 
   // 危険度：高さ・穴・深い穴を厳しく罰し、生存を最優先する
   const heightPenalty = maxHeight > 16 ? (maxHeight - 16) ** 2 * 2 : 0;
@@ -29,7 +31,9 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
     -bumpiness * 1.2 +
     -holes * 6.0 +
     -rowTransitions * 0.3 +
-    calcParityBalance(heights) * 0.6;
+    calcParityBalance(heights) * 0.6 -
+    (checkerParity !== 0 ? 1.5 : 0) -
+    (verticalParity !== 0 ? 1.5 : 0);
 
   return {
     total: b2bPotential,
@@ -70,10 +74,14 @@ export function evaluateState(state: SearchState): number {
     state.lastSpinAction && state.lastCleared === 2 ? 6.0 : 0.0;
   const b2bChainBonus =
     state.difficultClearCount > 1
-      ? (state.difficultClearCount - 1) * 4.0
+      ? (state.difficultClearCount - 1) * 6.0
       : 0.0;
   const spinChainBonus =
-    state.lastSpinAction && state.difficultClearCount > 1 ? 8.0 : 0.0;
+    state.lastSpinAction && state.difficultClearCount > 1 ? 10.0 : 0.0;
+  const b2bBreakPenalty =
+    state.lastCleared > 0 && state.lastCleared < 4 && !state.lastSpinAction
+      ? 12.0
+      : 0.0;
 
   // 攻撃力・地形・スピン受けをバランスし、生存を維持しつつスピンを狙う
   return (
@@ -88,7 +96,8 @@ export function evaluateState(state: SearchState): number {
     b2bChainBonus +
     spinChainBonus +
     allClearBonus +
-    allClearB2BBonus
+    allClearB2BBonus -
+    b2bBreakPenalty
   );
 }
 
@@ -198,6 +207,26 @@ function calcParityBalance(heights: number[]): number {
   const leftAvg = (heights[0] + heights[1] + heights[2] + heights[3] + heights[4]) / 5;
   const rightAvg = (heights[5] + heights[6] + heights[7] + heights[8] + heights[9]) / 5;
   return -Math.abs(leftAvg - rightAvg);
+}
+
+function getCheckerParity(board: BitBoard): number {
+  let count = 0;
+  for (let x = 0; x < BOARD_WIDTH; x++) {
+    for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
+      if (board.get(x, y) && ((x + y) & 1) === 0) {
+        count++;
+      }
+    }
+  }
+  return count & 1;
+}
+
+function getVerticalParity(heights: number[]): number {
+  let sum = 0;
+  for (let x = 0; x < BOARD_WIDTH; x += 2) {
+    sum += heights[x];
+  }
+  return sum & 1;
 }
 
 // Tスロット形状の検出：左受けTSD・右受けTSD・簡易TST
