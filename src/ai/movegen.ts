@@ -1,5 +1,4 @@
 import type { MinoType, MinoState, MinoRotation } from '../types.ts';
-import { BOARD_WIDTH } from '../constants.ts';
 import { getMatrix, spawnX, spawnY, tryRotate } from './pure.ts';
 import type { BitBoard } from './bitboard.ts';
 import type { Placement } from './types.ts';
@@ -123,57 +122,7 @@ function generateNonOPlacements(board: BitBoard, piece: MinoType): Placement[] {
 
 // 高速版：各回転・各xで一気に落下させ、周辺操作のみ展開（オプション）
 export function generatePlacementsFast(board: BitBoard, piece: MinoType): Placement[] {
-  if (piece === 'O') return generateOPlacements(board);
-
-  const result: Placement[] = [];
-  const startY = spawnY(piece, 0);
-  const startX = spawnX(piece);
-
-  for (const rot of [0, 1, 2, 3] as MinoState[]) {
-    const matrix = getMatrix(piece, rot);
-    const width = matrix[0].length;
-    for (let x = 0; x <= BOARD_WIDTH - width; x++) {
-      if (board.collides(matrix, x, startY)) continue;
-      let y = startY;
-      while (!board.collides(matrix, x, y + 1)) y++;
-
-      addPlacement(result, {
-        piece, rotation: rot, x, y, matrix,
-        lastActionWasRotation: false, lastKickIndex: 0,
-      });
-
-      // 左右1シフト
-      for (const dx of [-1, 1]) {
-        const nx = x + dx;
-        if (!board.collides(matrix, nx, y)) {
-          addPlacement(result, {
-            piece, rotation: rot, x: nx, y, matrix,
-            lastActionWasRotation: false, lastKickIndex: 0,
-          });
-        }
-      }
-
-      // 接地位置から回転
-      for (const dir of ['CW', 'CCW', '180'] as MinoRotation[]) {
-        const rotated = tryRotate(board, piece, rot, dir, x, y);
-        if (rotated) {
-          const newMatrix = getMatrix(piece, rotated.toRot);
-          let fy = rotated.y;
-          while (!board.collides(newMatrix, rotated.x, fy + 1)) fy++;
-          addPlacement(result, {
-            piece,
-            rotation: rotated.toRot,
-            x: rotated.x,
-            y: fy,
-            matrix: newMatrix,
-            lastActionWasRotation: true,
-            lastKickIndex: rotated.kickIndex,
-          });
-        }
-      }
-    }
-  }
-  return result;
+  return generatePlacements(board, piece);
 }
 
 function addPlacement(result: Placement[], p: Placement) {

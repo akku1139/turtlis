@@ -225,7 +225,11 @@ export class GameManager {
 
         if (data.type === 'result') {
           if (data.searchId !== this.aiSearchId) return;
-          if (data.searchKey !== this.getSearchKey()) return;
+
+          if (data.searchKey !== this.getSearchKey()) {
+            this.aiBusy = false;
+            return;
+          }
 
           this.aiBusy = false;
           if (output) output.textContent = JSON.stringify(data.placements, null, 2);
@@ -288,6 +292,12 @@ export class GameManager {
           }
         } else if (data.type === 'error') {
           if (data.searchId !== this.aiSearchId) return;
+
+          if (data.searchKey !== this.getSearchKey()) {
+            this.aiBusy = false;
+            return;
+          }
+
           this.aiBusy = false;
           if (output) output.textContent = 'AI error: ' + data.error;
           if (statusDetail) statusDetail.textContent = 'Error';

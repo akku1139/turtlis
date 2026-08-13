@@ -62,7 +62,7 @@ export class BitBoard {
         if (!matrix[r][c]) continue;
         const boardX = x + c;
         const boardY = y + r;
-        if (boardX < 0 || boardX >= BOARD_WIDTH || boardY >= BOARD_TOTAL_HEIGHT) {
+        if (boardX < 0 || boardX >= BOARD_WIDTH || boardY < 0 || boardY >= BOARD_TOTAL_HEIGHT) {
           return true;
         }
         if (boardY >= 0 && (this.cols[boardX] & (1n << BigInt(boardY))) !== 0n) {
@@ -125,12 +125,12 @@ function popcount64(v: bigint): number {
 function removeLines(col: bigint, lines: bigint): bigint {
   let result = 0n;
   let shift = 0n;
-  for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
+  for (let y = BOARD_TOTAL_HEIGHT - 1; y >= 0; y--) {
     if ((lines >> BigInt(y)) & 1n) {
       shift++;
     } else {
       if ((col >> BigInt(y)) & 1n) {
-        result |= 1n << BigInt(y - Number(shift));
+        result |= 1n << BigInt(y + Number(shift));
       }
     }
   }

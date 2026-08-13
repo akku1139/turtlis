@@ -1,5 +1,5 @@
 import type { SearchState, Placement } from './types.ts';
-import { generatePlacementsFast as generatePlacements } from './movegen.ts';
+import { generatePlacements } from './movegen.ts';
 import { simulateLock, simulateHold } from './pure.ts';
 import { evaluateState } from './evaluate.ts';
 import { getMatrix } from './pure.ts';
@@ -63,7 +63,7 @@ export function beamSearch(
       }
 
       // ホールドしてから配置
-      if (state.canHold) {
+      if (state.canHold && (state.hold !== null || state.bag.length > 0)) {
         const held = simulateHold(state.current, state.hold, state.bag);
         const heldState: SearchState = {
           board: state.board.clone(),
@@ -145,7 +145,7 @@ function applyWarmStart(
 
   for (const p of warmStartPlacements) {
     if (state.current !== p.piece) {
-      if (!state.canHold) break;
+      if (!state.canHold || (state.hold === null && state.bag.length === 0)) break;
       const held = simulateHold(state.current, state.hold, state.bag);
       if (held.newCurrent !== p.piece) break;
       state = {
