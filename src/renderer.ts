@@ -12,6 +12,7 @@ export class Renderer {
   readonly boardOffsetX: number;
   readonly boardOffsetY: number;
   aiGhostSequence: Array<{ piece: MinoType; rotation: import('./types.ts').MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
+  aiAutoActive: boolean = false;
 
   constructor(canvasId: string) {
     const canvas = document.getElementById(canvasId);
@@ -87,6 +88,10 @@ export class Renderer {
     this.aiGhostSequence = sequence;
   }
 
+  setAIAutoActive(active: boolean) {
+    this.aiAutoActive = active;
+  }
+
   render(core: GameCore) {
     this.ctx.fillStyle = '#060b13';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -132,11 +137,14 @@ export class Renderer {
     if (core.state === 'PLAYING' || core.state === 'PAUSED') {
       const ghostY = core.getGhostY();
       const n = core.currentMino.matrix.length;
-      for (let r = 0; r < n; r++) {
-        for (let c = 0; c < n; c++) {
-          if (core.currentMino.matrix[r][c]) {
-            const drawY = ghostY + r - BOARD_HIDDEN_HEIGHT;
-            this.drawGridBlock(core.minoX + c, drawY, core.currentMino.type, true);
+      // AI自動操作中は通常ゴーストを非表示にして AI 予測と混ざらないようにする
+      if (!this.aiAutoActive) {
+        for (let r = 0; r < n; r++) {
+          for (let c = 0; c < n; c++) {
+            if (core.currentMino.matrix[r][c]) {
+              const drawY = ghostY + r - BOARD_HIDDEN_HEIGHT;
+              this.drawGridBlock(core.minoX + c, drawY, core.currentMino.type, true);
+            }
           }
         }
       }

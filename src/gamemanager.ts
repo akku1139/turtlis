@@ -99,6 +99,13 @@ export class GameManager {
       this.aiAutoEnabled = autoToggle?.checked ?? false;
       this.aiContinuousEnabled = continuousToggle?.checked ?? false;
 
+      // UI依存関係の disabled 制御
+      if (autoToggle) autoToggle.disabled = !this.aiEnabled;
+      if (continuousToggle) continuousToggle.disabled = !this.aiAutoEnabled;
+
+      // Renderer に AI Auto 状態を反映
+      this.renderer.setAIAutoActive(this.aiAutoEnabled);
+
       if (gravityZeroCheckbox) {
         gravityZeroCheckbox.disabled = this.aiAutoEnabled;
         if (this.aiAutoEnabled) {

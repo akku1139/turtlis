@@ -23,7 +23,7 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const b2bPotential =
     tSlotCount * 4.0 +
     quadWellDepth * 2.5 +
-    (state.difficultClearCount > 1 ? state.difficultClearCount * 3.0 : 0) +
+    (state.difficultClearCount > 1 ? state.difficultClearCount * 1.5 : 0) +
     -bumpiness * 0.6 +
     -holes * 2.0 +
     -rowTransitions * 0.15 +
@@ -51,16 +51,18 @@ export function evaluateState(state: SearchState): number {
   // スピン受けがあるなら、その受けを使える T の数に応じて加点
   const spinPotential = terrain.tSlotCount * (1.0 + tAvailable * 1.5);
 
-  // 直近がスピンでラインを消した場合は追加報酬
-  const spinBonus =
-    state.lastSpinAction && state.lastCleared > 0 ? state.lastCleared * 3.0 : 0.0;
+  // 直近がスピンなら無条件で加点（B2B維持の価値）
+  const spinActionBonus = state.lastSpinAction ? 3.0 : 0.0;
+  // ライン消去自体も報酬（B2Bを切る通常消去でも、積みを減らす価値）
+  const clearBonus = state.lastCleared * 2.5;
 
   return (
     state.accumulatedAttack * 20 +
     terrain.total * 0.6 +
     spinPotential * 2.0 -
-    terrain.hazard * 2.5 +
-    spinBonus
+    terrain.hazard * 3.0 +
+    spinActionBonus +
+    clearBonus
   );
 }
 
