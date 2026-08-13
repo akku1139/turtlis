@@ -399,12 +399,7 @@ export class GameManager {
     this.aiGhostSequence = remaining;
     this.renderer.setAIGhostSequence(remaining);
     this.aiWarmStartPlacements = remaining;
-
-    if (this.aiAutoEnabled && remaining.length > 0) {
-      this.aiQueuedPlacement = remaining[0];
-    } else {
-      this.aiQueuedPlacement = null;
-    }
+    this.aiQueuedPlacement = null;
   }
 
   start() {

@@ -6,6 +6,7 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const board = state.board;
   const heights = columnHeights(board);
   const holes = countHoles(board);
+  const deepHolePenalty = countDeepHoles(board);
   const bumpiness = calcBumpiness(heights);
   const maxHeight = Math.max(...heights);
   const rowTransitions = calcRowTransitions(board);
@@ -17,6 +18,7 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const hazard =
     (maxHeight > 18 ? (maxHeight - 18) * 5 : 0) +
     holes * 3 +
+    deepHolePenalty +
     (maxHeight > 20 ? 20 : 0);
 
   // B2Bポテンシャル：地形評価は補助とし、実際のスピン機会を直接評価する方針に移行
@@ -98,6 +100,31 @@ function countHoles(board: BitBoard): number {
     }
   }
   return holes;
+}
+
+function countDeepHoles(board: BitBoard): number {
+  let penalty = 0;
+  for (let x = 0; x < BOARD_WIDTH; x++) {
+    let col = board.cols[x];
+    let filled = false;
+    let holeDepth = 0;
+    for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
+      if (col & 1n) {
+        filled = true;
+        if (holeDepth >= 3) {
+          penalty += (holeDepth - 2) * 5;
+        }
+        holeDepth = 0;
+      } else if (filled) {
+        holeDepth++;
+      }
+      col >>= 1n;
+    }
+    if (holeDepth >= 3) {
+      penalty += (holeDepth - 2) * 5;
+    }
+  }
+  return penalty;
 }
 
 function calcBumpiness(heights: number[]): number {
