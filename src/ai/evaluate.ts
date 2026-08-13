@@ -18,14 +18,16 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
     (maxHeight > 20 ? 20 : 0);
 
   const b2bPotential =
-    tSlotCount * 2.0 +
-    quadWellDepth * 1.5 +
-    (state.difficultClearCount > 1 ? state.difficultClearCount * 1.0 : 0) +
-    centerStackHeight * 0.4 +
-    -bumpiness * 0.5 +
-    -holes * 1.5 +
-    -rowTransitions * 0.1 +
-    calcParityBalance(heights) * 0.8;
+    tSlotCount * 3.0 +
+    quadWellDepth * 2.5 +
+    (state.difficultClearCount > 1 ? state.difficultClearCount * 2.0 : 0) +
+    centerStackHeight * 0.3 +
+    -bumpiness * 0.6 +
+    -holes * 2.0 +
+    -rowTransitions * 0.15 +
+    calcParityBalance(heights) * 0.8 +
+    // 高い列が中央に集まっていると B2B 地形を作りやすい
+    (heights[4] + heights[5] > 12 ? 2.0 : 0.0);
 
   return {
     total: b2bPotential,
@@ -39,7 +41,7 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
 
 export function evaluateState(state: SearchState): number {
   const terrain = computeTerrainScore(state);
-  return state.accumulatedAttack * 10 + terrain.total * 0.5 - terrain.hazard * 2;
+  return state.accumulatedAttack * 15 + terrain.total * 0.8 - terrain.hazard * 2.5;
 }
 
 function columnHeights(board: import('./bitboard.ts').BitBoard): number[] {

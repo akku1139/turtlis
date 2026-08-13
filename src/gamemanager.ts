@@ -206,6 +206,19 @@ export class GameManager {
       return;
     }
 
+    // 近似テンプレートがあれば、その配置列を warm start として利用する
+    if (this.aiWarmStartPlacements.length === 0) {
+      const approximate = this.templateStock.getBestApproximate(
+        board,
+        this.core.currentMino.type,
+        this.core.nextQueue,
+        this.core.holdType,
+      );
+      if (approximate && approximate.placements.length > 1) {
+        this.aiWarmStartPlacements = approximate.placements.slice(0, 2);
+      }
+    }
+
     if (this.aiBusy) return;
     this.aiBusy = true;
 
@@ -277,10 +290,10 @@ export class GameManager {
           if (data.searchId !== this.aiSearchId) return;
           if (data.searchKey !== this.getSearchKey()) return;
 
-          if (output)
-            output.textContent = `Searching... ${data.depth}/${data.totalDepth} (candidates: ${data.candidates})`;
-          if (statusDetail)
-            statusDetail.textContent = `Depth ${data.depth}/${data.totalDepth} | Candidates: ${data.candidates}`;
+        if (output)
+          output.textContent = `Searching... ${data.depth}/${data.totalDepth} (candidates: ${data.candidates}, best ATK: ${data.bestAttack ?? 0})`;
+        if (statusDetail)
+          statusDetail.textContent = `Depth ${data.depth}/${data.totalDepth} | Candidates: ${data.candidates} | Best ATK: ${data.bestAttack ?? 0} | Stock: ${this.templateStock.size}`;
 
           if (data.placements) {
             this.aiGhostSequence = data.placements.map(
@@ -332,8 +345,8 @@ export class GameManager {
       canHold: this.core.canHold,
       comboCount: this.core.comboCount,
       difficultClearCount: this.core.difficultClearCount,
-      beamWidth: 50,
-      maxDepth: 3,
+      beamWidth: 45,
+      maxDepth: 4,
       warmStartPlacements: this.aiWarmStartPlacements,
     });
     this.aiWarmStartPlacements = [];

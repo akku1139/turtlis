@@ -35,6 +35,7 @@ self.onmessage = (e: MessageEvent) => {
             depth: progress.depth,
             totalDepth: progress.totalDepth,
             candidates: progress.candidates,
+            bestAttack: progress.bestState.accumulatedAttack,
             placements: progress.bestState.placements.map((p) => ({
               piece: p.piece,
               rotation: p.rotation,

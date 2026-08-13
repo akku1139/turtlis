@@ -91,6 +91,31 @@ export class TemplateStock {
     return null;
   }
 
+  getBestApproximate(
+    board: BitBoard,
+    current: MinoType,
+    bag: MinoType[],
+    hold: MinoType | null,
+  ): StockEntry | null {
+    const features = this.computeFeatures(board);
+    let best: StockEntry | null = null;
+    let bestDist = Infinity;
+
+    for (const entry of this.entries.values()) {
+      const dist = this.similarity(features, entry.features);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = entry;
+      }
+    }
+
+    // 距離が近いものだけを採用する（完全一致ほど厳密でなくてもよい）
+    if (best && bestDist < 0.55) {
+      return best;
+    }
+    return null;
+  }
+
   store(
     board: BitBoard,
     current: MinoType,

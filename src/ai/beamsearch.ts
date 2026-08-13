@@ -17,7 +17,7 @@ export function beamSearch(
   }) => void,
   warmStartPlacements?: Placement[],
 ): SearchState {
-  const depth = maxDepth ?? root.bag.length + 1;
+  const depth = Math.min(maxDepth ?? root.bag.length + 1, root.bag.length + 1);
   let beam: SearchState[] = [root];
   let startDepth = 0;
 
