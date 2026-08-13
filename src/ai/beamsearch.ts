@@ -7,6 +7,7 @@ export function beamSearch(
   root: SearchState,
   beamWidth: number = 300,
   maxDepth?: number,
+  onProgress?: (info: { depth: number; totalDepth: number; candidates: number }) => void,
 ): SearchState {
   const depth = maxDepth ?? root.bag.length + 1;
   let beam: SearchState[] = [root];
@@ -102,6 +103,10 @@ export function beamSearch(
     // 評価値でソートして上位beamWidth個
     unique.sort((a, b) => evaluateState(b) - evaluateState(a));
     beam = unique.slice(0, beamWidth);
+
+    if (onProgress) {
+      onProgress({ depth: d + 1, totalDepth: depth, candidates: unique.length });
+    }
   }
 
   // 最終ビームの最良を返す

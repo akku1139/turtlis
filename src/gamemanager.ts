@@ -38,7 +38,9 @@ export class GameManager {
     const aiBtn = document.getElementById('aiSuggestBtn') as HTMLButtonElement | null;
     const aiOutput = document.getElementById('aiOutput');
     if (aiBtn) aiBtn.disabled = true;
-    if (aiOutput) aiOutput.textContent = 'AI thinking...';
+    if (aiOutput) aiOutput.textContent = 'AI thinking... (0/?)';
+
+    this.renderer.setAIGhost(null);
 
     if (!this.aiWorker) {
       this.aiWorker = new Worker(new URL('./ai/searchWorker.ts', import.meta.url), { type: 'module' });
@@ -46,13 +48,32 @@ export class GameManager {
         const data = e.data;
         if (data.type === 'result') {
           if (aiOutput) aiOutput.textContent = JSON.stringify(data.placements, null, 2);
+          if (data.placements && data.placements.length > 0) {
+            const first = data.placements[0];
+            // 1手目をゴースト表示するための Placement を構築
+            this.renderer.setAIGhost({
+              piece: first.piece,
+              rotation: first.rotation,
+              x: first.x,
+              y: first.y,
+              matrix: [], // matrix は renderer 側で再構築される
+              lastActionWasRotation: false,
+              lastKickIndex: 0,
+            });
+          } else {
+            this.renderer.setAIGhost(null);
+          }
+        } else if (data.type === 'progress') {
+          if (aiOutput) aiOutput.textContent = `AI thinking... (${data.depth}/${data.totalDepth}, candidates: ${data.candidates})`;
         } else if (data.type === 'error') {
           if (aiOutput) aiOutput.textContent = 'AI error: ' + data.error;
+          this.renderer.setAIGhost(null);
         }
         if (aiBtn) aiBtn.disabled = false;
       };
       this.aiWorker.onerror = (e) => {
         if (aiOutput) aiOutput.textContent = 'Worker error: ' + e.message;
+        this.renderer.setAIGhost(null);
         if (aiBtn) aiBtn.disabled = false;
       };
     }

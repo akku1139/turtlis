@@ -21,7 +21,17 @@ self.onmessage = (e: MessageEvent) => {
     };
 
     try {
-      const best = beamSearch(state, data.beamWidth ?? 300);
+      const best = beamSearch(
+        state,
+        data.beamWidth ?? 300,
+        undefined,
+        (progress) => {
+          (self as unknown as DedicatedWorkerGlobalScope).postMessage({
+            type: 'progress',
+            ...progress,
+          });
+        },
+      );
       const placements = best.placements.map(p => ({
         piece: p.piece,
         x: p.x,

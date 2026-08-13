@@ -2,6 +2,8 @@ import type { MinoType, MinoMatrix } from './types.ts';
 import { BOARD_HIDDEN_HEIGHT, BOARD_TOTAL_HEIGHT, BOARD_VISIBLE_HEIGHT, BOARD_WIDTH, MINOS } from './constants.ts';
 import { Tetromino } from './tetromino.ts';
 import type { GameCore } from './gamecore.ts';
+import type { Placement } from './ai/types.ts';
+import { getMatrix } from './ai/pure.ts';
 
 export class Renderer {
   canvas: HTMLCanvasElement;
@@ -9,6 +11,7 @@ export class Renderer {
   readonly blockSize: number;
   readonly boardOffsetX: number;
   readonly boardOffsetY: number;
+  aiGhost: Placement | null = null;
 
   constructor(canvasId: string) {
     const canvas = document.getElementById(canvasId);
@@ -80,6 +83,10 @@ export class Renderer {
     }
   }
 
+  setAIGhost(placement: Placement | null) {
+    this.aiGhost = placement;
+  }
+
   render(core: GameCore) {
     this.ctx.fillStyle = '#060b13';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -139,6 +146,22 @@ export class Renderer {
           if (core.currentMino.matrix[r][c]) {
             const drawY = core.minoY + r - BOARD_HIDDEN_HEIGHT;
             this.drawGridBlock(core.minoX + c, drawY, core.currentMino.type, false);
+          }
+        }
+      }
+
+      // AIゴースト表示（提案された1手目）
+      if (this.aiGhost) {
+        const matrix = getMatrix(this.aiGhost.piece, this.aiGhost.rotation as import('./types.ts').MinoState);
+        const nAI = matrix.length;
+        for (let r = 0; r < nAI; r++) {
+          for (let c = 0; c < nAI; c++) {
+            if (matrix[r][c]) {
+              const drawY = this.aiGhost.y + r - BOARD_HIDDEN_HEIGHT;
+              if (drawY >= 0 && drawY < BOARD_VISIBLE_HEIGHT) {
+                this.drawGridBlock(this.aiGhost.x + c, drawY, this.aiGhost.piece, true);
+              }
+            }
           }
         }
       }
