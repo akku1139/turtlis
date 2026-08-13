@@ -58,14 +58,30 @@ export function evaluateState(state: SearchState): number {
   // ライン消去自体も報酬（B2Bを切る通常消去でも、積みを減らす価値）
   const clearBonus = state.lastCleared * 2.5;
 
-  // 生存リスクを最重視しつつ攻撃力も考慮する
+  // Tスピン単発・B2B連鎖を強く優先する
+  const tSpinSingleBonus =
+    state.lastSpinAction && state.lastCleared === 1 ? 8.0 : 0.0;
+  const tSpinDoubleBonus =
+    state.lastSpinAction && state.lastCleared === 2 ? 4.0 : 0.0;
+  const b2bChainBonus =
+    state.difficultClearCount > 1
+      ? (state.difficultClearCount - 1) * 2.5
+      : 0.0;
+  const spinChainBonus =
+    state.lastSpinAction && state.difficultClearCount > 1 ? 5.0 : 0.0;
+
+  // 攻撃力・地形・スピン受けをバランスし、生存を維持しつつスピンを狙う
   return (
-    state.accumulatedAttack * 10 +
-    terrain.total * 0.3 +
+    state.accumulatedAttack * 12 +
+    terrain.total * 0.5 +
     spinPotential -
     terrain.hazard * 5.0 +
     spinActionBonus +
-    clearBonus
+    clearBonus +
+    tSpinSingleBonus +
+    tSpinDoubleBonus +
+    b2bChainBonus +
+    spinChainBonus
   );
 }
 

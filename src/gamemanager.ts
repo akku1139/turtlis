@@ -89,11 +89,45 @@ export class GameManager {
     const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
     const continuousToggle = document.getElementById('aiContinuousToggle') as HTMLInputElement | null;
     const gravityZeroCheckbox = document.getElementById('cfgGravityZero') as HTMLInputElement | null;
+    const kickTableSelect = document.getElementById('cfgKickTable') as HTMLSelectElement | null;
 
     const updateAIEnabled = () => {
       const prevEnabled = this.aiEnabled;
       const prevAuto = this.aiAutoEnabled;
       const prevContinuous = this.aiContinuousEnabled;
+
+      // SRS (not SRS+) が選択されている場合はAIを強制無効化
+      if (kickTableSelect?.value === 'SRS') {
+        this.aiEnabled = false;
+        this.aiAutoEnabled = false;
+        this.aiContinuousEnabled = false;
+        if (toggle) {
+          toggle.checked = false;
+          toggle.disabled = true;
+        }
+        if (autoToggle) {
+          autoToggle.checked = false;
+          autoToggle.disabled = true;
+        }
+        if (continuousToggle) {
+          continuousToggle.checked = false;
+          continuousToggle.disabled = true;
+        }
+        this.restartSearch();
+
+        const output = document.getElementById('aiOutput');
+        const statusOverlay = document.getElementById('aiStatusOverlay');
+        const statusText = document.getElementById('aiStatusText');
+        const statusDetail = document.getElementById('aiStatusDetail');
+        if (statusOverlay) statusOverlay.classList.add('hidden');
+        if (output) output.textContent = '';
+        if (statusText) statusText.textContent = 'AI OFF (SRS not supported)';
+        if (statusDetail) statusDetail.textContent = '';
+        return;
+      }
+
+      // SRS+ では通常どおり操作可能
+      if (toggle) toggle.disabled = false;
 
       this.aiEnabled = toggle?.checked ?? false;
       this.aiAutoEnabled = autoToggle?.checked ?? false;
@@ -151,6 +185,7 @@ export class GameManager {
     toggle?.addEventListener('change', updateAIEnabled);
     autoToggle?.addEventListener('change', updateAIEnabled);
     continuousToggle?.addEventListener('change', updateAIEnabled);
+    kickTableSelect?.addEventListener('change', updateAIEnabled);
 
     updateAIEnabled();
   }
@@ -352,9 +387,9 @@ export class GameManager {
       canHold: this.core.canHold,
       comboCount: this.core.comboCount,
       difficultClearCount: this.core.difficultClearCount,
-      beamWidth: 25,
-      maxDepth: 7,
-      timeLimitMs: 6000,
+      beamWidth: 20,
+      maxDepth: 12,
+      timeLimitMs: 8000,
       warmStartPlacements: this.aiWarmStartPlacements,
     });
     this.aiWarmStartPlacements = [];
