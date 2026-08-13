@@ -1,6 +1,7 @@
 import { GameCore } from './gamecore.ts';
 import { InputManager } from './inputmanager.ts';
 import { Renderer } from './renderer.ts';
+import { suggestBestPlan } from './ai/search.ts';
 
 export class GameManager {
   core: GameCore;
@@ -28,6 +29,25 @@ export class GameManager {
         el.addEventListener('change', () => this.core.updateConfigFromUI());
       }
     });
+  }
+
+  suggestAI() {
+    if (this.core.state !== 'PLAYING') return;
+    try {
+      const placements = suggestBestPlan(this.core);
+      const aiOutput = document.getElementById('aiOutput');
+      if (aiOutput) {
+        aiOutput.textContent = JSON.stringify(
+          placements.map(p => ({ piece: p.piece, x: p.x, y: p.y, rotation: p.rotation })),
+          null,
+          2
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      const aiOutput = document.getElementById('aiOutput');
+      if (aiOutput) aiOutput.textContent = 'AI error: ' + e;
+    }
   }
 
   start() {
