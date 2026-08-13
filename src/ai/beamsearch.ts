@@ -5,7 +5,7 @@ import { evaluateState } from './evaluate.ts';
 
 export function beamSearch(
   root: SearchState,
-  beamWidth: number = 80,
+  beamWidth: number = 60,
   maxDepth?: number,
   onProgress?: (info: {
     depth: number;

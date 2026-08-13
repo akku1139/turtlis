@@ -7,6 +7,32 @@ import type { Placement } from './types.ts';
 
 const kickTable = new SRSPlusKickTable();
 
+// 事前計算した回転行列キャッシュ
+const matrixCache: Map<string, number[][]> = new Map();
+
+function getCachedMatrix(piece: MinoType, rotation: MinoState): number[][] {
+  const key = `${piece}-${rotation}`;
+  let cached = matrixCache.get(key);
+  if (cached) return cached;
+
+  const tetro = new Tetromino(piece);
+  let matrix = tetro.matrix;
+  if (rotation !== 0) {
+    const dirMap: Record<MinoState, MinoRotation | null> = {
+      0: null,
+      1: 'CW',
+      2: '180',
+      3: 'CCW',
+    };
+    const dir = dirMap[rotation];
+    if (dir) {
+      matrix = tetro.getRotatedMatrix(dir);
+    }
+  }
+  matrixCache.set(key, matrix);
+  return matrix;
+}
+
 export function spawnX(piece: MinoType): number {
   return piece === 'O' ? 4 : 3;
 }
@@ -23,18 +49,7 @@ export function spawnY(piece: MinoType, rotation: MinoState): number {
 }
 
 export function getMatrix(piece: MinoType, rotation: MinoState): number[][] {
-  const tetro = new Tetromino(piece);
-  let matrix = tetro.matrix;
-  if (rotation === 0) return matrix;
-  const dirMap: Record<MinoState, MinoRotation | null> = {
-    0: null,
-    1: 'CW',
-    2: '180',
-    3: 'CCW',
-  };
-  const dir = dirMap[rotation];
-  if (!dir) return matrix;
-  return tetro.getRotatedMatrix(dir);
+  return getCachedMatrix(piece, rotation);
 }
 
 export function tryRotate(

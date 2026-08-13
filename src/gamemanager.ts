@@ -250,7 +250,7 @@ export class GameManager {
       canHold: this.core.canHold,
       comboCount: this.core.comboCount,
       difficultClearCount: this.core.difficultClearCount,
-      beamWidth: 80,
+      beamWidth: 60,
     });
   }
 
@@ -275,6 +275,8 @@ export class GameManager {
     this.aiBusy = false;
     this.aiGhostSequence = [];
     this.renderer.setAIGhostSequence([]);
+    // 明示的に次の探索を開始
+    this.triggerSearchIfNeeded();
   }
 
   start() {
