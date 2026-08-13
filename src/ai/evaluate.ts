@@ -58,6 +58,11 @@ export function evaluateState(state: SearchState): number {
   // ライン消去自体も報酬（B2Bを切る通常消去でも、積みを減らす価値）
   const clearBonus = state.lastCleared * 2.5;
 
+  // 全消し（All Clear）は最優先で取る
+  const isAllClear = state.board.isEmpty() && state.lastCleared > 0;
+  const allClearBonus = isAllClear ? 30.0 : 0.0;
+  const allClearB2BBonus = isAllClear && state.difficultClearCount > 1 ? 20.0 : 0.0;
+
   // Tスピン単発・B2B連鎖を強く優先する
   const tSpinSingleBonus =
     state.lastSpinAction && state.lastCleared === 1 ? 8.0 : 0.0;
@@ -81,7 +86,9 @@ export function evaluateState(state: SearchState): number {
     tSpinSingleBonus +
     tSpinDoubleBonus +
     b2bChainBonus +
-    spinChainBonus
+    spinChainBonus +
+    allClearBonus +
+    allClearB2BBonus
   );
 }
 
