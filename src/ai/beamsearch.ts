@@ -134,12 +134,18 @@ export function beamSearch(
       }
       return 0.0;
     };
-    const holeBonus = (s: SearchState): number =>
-      (initialHoles - countHoles(s.board)) * 5.0;
-    unique.sort((a, b) =>
-      (evaluateState(b) + planBonus(b) + holeBonus(b)) -
-      (evaluateState(a) + planBonus(a) + holeBonus(a))
-    );
+    const scored = unique.map(s => {
+      const holesNow = countHoles(s.board);
+      const holeBonus = (initialHoles - holesNow) * 5.0;
+      return {
+        s,
+        score: evaluateState(s) + planBonus(s) + holeBonus,
+      };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    for (let i = 0; i < scored.length; i++) {
+      unique[i] = scored[i].s;
+    }
 
     // スピン状態を優先してビームを構成する（新しい探索視点）
     const spinStates = unique.filter((s) => s.lastSpinAction && s.lastCleared > 0);

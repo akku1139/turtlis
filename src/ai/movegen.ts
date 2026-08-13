@@ -64,75 +64,39 @@ interface StateNode {
 }
 
 function generateNonOPlacements(board: BitBoard, piece: MinoType): Placement[] {
-  const startX = spawnX(piece);
-  const startRot: MinoState = 0;
-  const startY = spawnY(piece, startRot);
-  const startMatrix = getMatrix(piece, startRot);
-  if (board.collides(startMatrix, startX, startY)) return [];
-
-  const queue: StateNode[] = [{
-    rotation: startRot,
-    x: startX,
-    y: startY,
-    lastActionWasRotation: false,
-    lastKickIndex: 0,
-  }];
-  let head = 0;
-  let nodesProcessed = 0;
-  const visited = new Set<string>();
   const result: Placement[] = [];
-  const resultMap = new Map<string, Placement>();
+  for (let rotation = 0; rotation < 4; rotation++) {
+    const matrix = getMatrix(piece, rotation as MinoState);
+    const startY = spawnY(piece, rotation as MinoState);
 
-  while (head < queue.length) {
-    if (nodesProcessed++ > 5000) break;
-    const cur = queue[head++];
-    const key = `${cur.rotation},${cur.x},${cur.y},${cur.lastActionWasRotation},${cur.lastKickIndex}`;
-    if (visited.has(key)) continue;
-    visited.add(key);
+    for (let x = -3; x <= BOARD_WIDTH + 2; x++) {
+      if (board.collides(matrix, x, startY)) continue;
 
-    const matrix = getMatrix(piece, cur.rotation);
-    let gy = cur.y;
-    while (!board.collides(matrix, cur.x, gy + 1)) gy++;
-
-    const placement: Placement = {
-      piece,
-      rotation: cur.rotation,
-      x: cur.x,
-      y: gy,
-      matrix,
-      lastActionWasRotation: cur.lastActionWasRotation,
-      lastKickIndex: cur.lastKickIndex,
-    };
-    const pKey = `${piece},${cur.rotation},${cur.x},${gy},${cur.lastActionWasRotation},${cur.lastKickIndex}`;
-    if (!resultMap.has(pKey)) {
-      resultMap.set(pKey, placement);
-      result.push(placement);
-    }
-
-    for (const dx of [-1, 1]) {
-      const nx = cur.x + dx;
-      if (!board.collides(matrix, nx, cur.y)) {
-        queue.push({
-          rotation: cur.rotation,
-          x: nx,
-          y: cur.y,
-          lastActionWasRotation: false,
-          lastKickIndex: 0,
-        });
+      let y = startY;
+      while (!board.collides(matrix, x, y + 1)) {
+        y++;
       }
-    }
 
-    for (const dir of ['CW', 'CCW', '180'] as MinoRotation[]) {
-      const rotated = tryRotate(board, piece, cur.rotation, dir, cur.x, cur.y);
-      if (rotated) {
-        queue.push({
-          rotation: rotated.toRot,
-          x: rotated.x,
-          y: rotated.y,
-          lastActionWasRotation: true,
-          lastKickIndex: rotated.kickIndex,
-        });
-      }
+      const base = {
+        piece,
+        rotation: rotation as MinoState,
+        x,
+        y,
+        matrix,
+      };
+
+      result.push({
+        ...base,
+        lastActionWasRotation: false,
+        lastKickIndex: 0,
+      });
+
+      // スピン候補として回転直後ロックの配置も追加する
+      result.push({
+        ...base,
+        lastActionWasRotation: true,
+        lastKickIndex: 0,
+      });
     }
   }
 
