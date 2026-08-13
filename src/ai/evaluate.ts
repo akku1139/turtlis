@@ -1,6 +1,8 @@
 import type { SearchState, TerrainScore } from './types.ts';
 import { BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
 import type { BitBoard } from './bitboard.ts';
+import { generatePlacements } from './movegen.ts';
+import { detectTSpin, detectOtherSpin, simulateLock } from './pure.ts';
 
 export function computeTerrainScore(state: SearchState): TerrainScore {
   const board = state.board;
@@ -19,9 +21,9 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
     holes * 3 +
     (maxHeight > 20 ? 20 : 0);
 
-  // B2Bポテンシャル：中央を高くする評価は削除
+  // B2Bポテンシャル：地形評価は補助とし、実際のスピン機会を直接評価する方針に移行
   const b2bPotential =
-    tSlotCount * 4.0 +
+    tSlotCount * 1.5 +
     quadWellDepth * 2.5 +
     (state.difficultClearCount > 1 ? state.difficultClearCount * 1.5 : 0) +
     -bumpiness * 0.6 +
@@ -56,14 +58,34 @@ export function evaluateState(state: SearchState): number {
   // ライン消去自体も報酬（B2Bを切る通常消去でも、積みを減らす価値）
   const clearBonus = state.lastCleared * 2.5;
 
+  // 現在の盤面で T ミノがスピンしてラインを消せるかを直接検出
+  const tSpinOpportunity = hasTSpinClearOpportunity(state.board) ? 18.0 : 0.0;
+
   return (
     state.accumulatedAttack * 20 +
     terrain.total * 0.6 +
     spinPotential * 2.0 -
     terrain.hazard * 3.0 +
     spinActionBonus +
-    clearBonus
+    clearBonus +
+    tSpinOpportunity * (1.0 + tAvailable * 0.6)
   );
+}
+
+// 盤面上に T ミノを置いてライン消去を伴うスピンが可能かを簡易判定する
+function hasTSpinClearOpportunity(board: BitBoard): boolean {
+  const placements = generatePlacements(board, 'T');
+  for (const p of placements) {
+    const tSpin = detectTSpin(board, p);
+    if (!tSpin.isSpin) continue;
+
+    // スピン判定後、実際にラインを消すかを確認
+    const { result } = simulateLock(board, p, 0, 0, 1);
+    if (result.cleared > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function columnHeights(board: BitBoard): number[] {
