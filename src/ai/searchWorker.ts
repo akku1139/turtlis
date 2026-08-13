@@ -49,6 +49,7 @@ self.onmessage = (e: MessageEvent) => {
           });
         },
         data.warmStartPlacements,
+        data.timeLimitMs,
       );
 
       const placements = best.placements.map((p) => ({

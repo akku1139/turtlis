@@ -16,10 +16,12 @@ export function beamSearch(
     bestState: SearchState;
   }) => void,
   warmStartPlacements?: Placement[],
+  timeLimitMs?: number,
 ): SearchState {
   const depth = Math.min(maxDepth ?? root.bag.length + 1, root.bag.length + 1);
   let beam: SearchState[] = [root];
   let startDepth = 0;
+  const searchStart = Date.now();
 
   if (warmStartPlacements && warmStartPlacements.length > 0) {
     const { state, appliedCount } = applyWarmStart(root, warmStartPlacements);
@@ -121,9 +123,28 @@ export function beamSearch(
     }
     const unique = Array.from(seen.values());
 
-    // 評価値でソートして上位beamWidth個
+    // 評価値でソート
     unique.sort((a, b) => evaluateState(b) - evaluateState(a));
-    beam = unique.slice(0, beamWidth);
+
+    // 上位 beamWidth 個を基本とし、一定割合をランダムに混ぜて探索の多様性を確保する
+    if (unique.length <= beamWidth) {
+      beam = unique;
+    } else {
+      const topCount = Math.max(1, Math.floor(beamWidth * 0.7));
+      const randomCount = beamWidth - topCount;
+      const top = unique.slice(0, topCount);
+      const rest = unique.slice(topCount);
+      const randomPicks: SearchState[] = [];
+      for (let i = 0; i < randomCount && rest.length > 0; i++) {
+        const idx = Math.floor(Math.random() * rest.length);
+        randomPicks.push(rest.splice(idx, 1)[0]);
+      }
+      beam = [...top, ...randomPicks];
+    }
+
+    if (timeLimitMs && Date.now() - searchStart > timeLimitMs) {
+      break;
+    }
 
     if (onProgress) {
       onProgress({

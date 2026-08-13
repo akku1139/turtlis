@@ -352,8 +352,9 @@ export class GameManager {
       canHold: this.core.canHold,
       comboCount: this.core.comboCount,
       difficultClearCount: this.core.difficultClearCount,
-      beamWidth: 45,
-      maxDepth: 4,
+      beamWidth: 25,
+      maxDepth: 7,
+      timeLimitMs: 6000,
       warmStartPlacements: this.aiWarmStartPlacements,
     });
     this.aiWarmStartPlacements = [];
