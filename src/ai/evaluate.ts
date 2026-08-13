@@ -16,6 +16,7 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   const checkerParity = getCheckerParity(board);
   const verticalParity = getVerticalParity(heights);
   const maxDeepHoleDepth = getMaxDeepHoleDepth(board);
+  const deepWellCount = countDeepWellColumns(board);
   const sideAvg = (heights[0] + heights[1] + heights[8] + heights[9]) / 4;
   const allAvg = heights.reduce((a, b) => a + b, 0) / BOARD_WIDTH;
   const sideCoverage = (sideAvg - allAvg) * 2.0;
@@ -31,6 +32,8 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
   // I依存の深い穴はIが近くにいないと非常に危険
   const deepHoleDependencyPenalty =
     maxDeepHoleDepth >= 3 && !iAvailableSoon ? maxDeepHoleDepth * 8 : 0;
+  const deepWellExcessPenalty =
+    deepWellCount > 1 ? (deepWellCount - 1) * 20 : 0;
 
   // 危険度：高さ・穴・深い穴を厳しく罰し、生存を最優先する
   const heightPenalty = maxHeight > 16 ? (maxHeight - 16) ** 2 * 2 : 0;
@@ -39,6 +42,7 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
     holes * 12 +
     deepHolePenalty * 3 +
     deepHoleDependencyPenalty +
+    deepWellExcessPenalty +
     (maxHeight > 20 ? 50 : 0);
 
   const b2bPotential =
@@ -215,6 +219,32 @@ function getMaxDeepHoleDepth(board: BitBoard): number {
     if (holeDepth > maxDepth) maxDepth = holeDepth;
   }
   return maxDepth;
+}
+
+function countDeepWellColumns(board: BitBoard): number {
+  let count = 0;
+  for (let x = 0; x < BOARD_WIDTH; x++) {
+    let col = board.cols[x];
+    let filled = false;
+    let holeDepth = 0;
+    for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
+      if (col & 1n) {
+        filled = true;
+        if (holeDepth >= 3) {
+          count++;
+          break;
+        }
+        holeDepth = 0;
+      } else if (filled) {
+        holeDepth++;
+      }
+      col >>= 1n;
+    }
+    if (holeDepth >= 3) {
+      count++;
+    }
+  }
+  return count;
 }
 
 function calcBumpiness(heights: number[]): number {
