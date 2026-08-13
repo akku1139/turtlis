@@ -115,10 +115,10 @@ export function beamSearch(
 
     if (candidates.length === 0) break;
 
-    // 重複除去（簡易：盤面ハッシュとbagで）
+    // 重複除去（盤面・バッグ・攻撃力などを考慮）
     const seen = new Map<string, SearchState>();
     for (const c of candidates) {
-      const key = `${c.board.hash()}|${c.bag.join(',')}|${c.hold}|${c.comboCount}|${c.difficultClearCount}`;
+      const key = `${c.board.hash()}|${c.bag.join(',')}|${c.hold}|${c.comboCount}|${c.difficultClearCount}|${c.accumulatedAttack}`;
       if (!seen.has(key)) seen.set(key, c);
     }
     const unique = Array.from(seen.values());
@@ -126,21 +126,8 @@ export function beamSearch(
     // 評価値でソート
     unique.sort((a, b) => evaluateState(b) - evaluateState(a));
 
-    // 上位 beamWidth 個を基本とし、一定割合をランダムに混ぜて探索の多様性を確保する
-    if (unique.length <= beamWidth) {
-      beam = unique;
-    } else {
-      const topCount = Math.max(1, Math.floor(beamWidth * 0.7));
-      const randomCount = beamWidth - topCount;
-      const top = unique.slice(0, topCount);
-      const rest = unique.slice(topCount);
-      const randomPicks: SearchState[] = [];
-      for (let i = 0; i < randomCount && rest.length > 0; i++) {
-        const idx = Math.floor(Math.random() * rest.length);
-        randomPicks.push(rest.splice(idx, 1)[0]);
-      }
-      beam = [...top, ...randomPicks];
-    }
+    // 上位 beamWidth 個を選択する（ランダム要素を排除して安定させる）
+    beam = unique.slice(0, beamWidth);
 
     if (timeLimitMs && Date.now() - searchStart > timeLimitMs) {
       break;
@@ -191,6 +178,10 @@ function applyWarmStart(
       lastActionWasRotation: p.lastActionWasRotation ?? false,
       lastKickIndex: p.lastKickIndex ?? 0,
     };
+
+    if (state.board.collides(placement.matrix, placement.x, placement.y)) {
+      return { state: root, appliedCount: 0 };
+    }
 
     const { result, nextBoard } = simulateLock(
       state.board,

@@ -376,8 +376,16 @@ export class GameManager {
       if (this.core.currentMino.type !== p.piece) return;
     }
 
+    const matrix = getMatrix(p.piece, p.rotation);
+    if (this.core.board.collides(matrix, p.x, p.y)) {
+      this.aiGhostSequence = [];
+      this.renderer.setAIGhostSequence([]);
+      this.lastSearchKey = '';
+      return;
+    }
+
     this.core.currentMino.state = p.rotation;
-    this.core.currentMino.matrix = getMatrix(p.piece, p.rotation);
+    this.core.currentMino.matrix = matrix;
     this.core.minoX = p.x;
     this.core.minoY = p.y;
     this.core.lastActionWasRotation = p.lastActionWasRotation ?? false;
