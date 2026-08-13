@@ -3,6 +3,7 @@
 import { beamSearch } from './beamsearch';
 import { BitBoard } from './bitboard';
 import type { SearchState } from './types';
+import { getMatrix } from './pure';
 
 self.onmessage = (e: MessageEvent) => {
   const data = e.data;
@@ -50,7 +51,18 @@ self.onmessage = (e: MessageEvent) => {
         },
         data.warmStartPlacements,
         data.timeLimitMs,
+        data.planBoardHashes,
       );
+
+      const boardHashes: string[] = [];
+      const simBoard = BitBoard.fromGrid(data.boardGrid);
+      boardHashes.push(simBoard.hash().toString());
+      for (const p of best.placements) {
+        const matrix = getMatrix(p.piece, p.rotation);
+        simBoard.merge(matrix, p.x, p.y);
+        simBoard.clearLines();
+        boardHashes.push(simBoard.hash().toString());
+      }
 
       const placements = best.placements.map((p) => ({
         piece: p.piece,
@@ -67,6 +79,7 @@ self.onmessage = (e: MessageEvent) => {
         searchKey,
         placements,
         attack: best.accumulatedAttack,
+        boardHashes,
       });
     } catch (err) {
       (self as unknown as DedicatedWorkerGlobalScope).postMessage({

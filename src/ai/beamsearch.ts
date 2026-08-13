@@ -17,6 +17,7 @@ export function beamSearch(
   }) => void,
   warmStartPlacements?: Placement[],
   timeLimitMs?: number,
+  planBoardHashes?: string[],
 ): SearchState {
   const depth = Math.min(maxDepth ?? root.bag.length + 1, root.bag.length + 1);
   let beam: SearchState[] = [root];
@@ -62,6 +63,7 @@ export function beamSearch(
           placements: [...state.placements, p],
           lastSpinAction: result.isSpinAction,
           lastCleared: result.cleared,
+          depth: d + 1,
         };
         candidates.push(nextState);
       }
@@ -107,6 +109,7 @@ export function beamSearch(
             placements: [...heldState.placements, p],
             lastSpinAction: result.isSpinAction,
             lastCleared: result.cleared,
+            depth: d + 1,
           };
           candidates.push(nextState);
         }
@@ -123,8 +126,16 @@ export function beamSearch(
     }
     const unique = Array.from(seen.values());
 
-    // 評価値でソート
-    unique.sort((a, b) => evaluateState(b) - evaluateState(a));
+    // 評価値 + 前回計画との一致ボーナスでソート
+    const planBonus = (s: SearchState): number => {
+      if (planBoardHashes && s.depth !== undefined && s.depth < planBoardHashes.length) {
+        return s.board.hash().toString() === planBoardHashes[s.depth] ? 6.0 : 0.0;
+      }
+      return 0.0;
+    };
+    unique.sort((a, b) =>
+      (evaluateState(b) + planBonus(b)) - (evaluateState(a) + planBonus(a))
+    );
 
     // スピン状態を優先してビームを構成する（新しい探索視点）
     const spinStates = unique.filter((s) => s.lastSpinAction && s.lastCleared > 0);
@@ -213,6 +224,7 @@ function applyWarmStart(
       placements: [...state.placements, placement],
       lastSpinAction: result.isSpinAction,
       lastCleared: result.cleared,
+      depth: (state.depth ?? 0) + 1,
     };
     applied.push(placement);
   }

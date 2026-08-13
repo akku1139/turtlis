@@ -24,6 +24,7 @@ export interface SearchState {
   placements: Placement[];
   lastSpinAction: boolean;
   lastCleared: number;
+  depth?: number;
 }
 
 export interface TerrainScore {

@@ -31,6 +31,7 @@ export class GameManager {
     lastKickIndex?: number;
   }> = [];
   private lastProcessedPiecesPlaced = -1;
+  private aiPlanBoardHashes: string[] = [];
   private aiQueuedPlacement: {
     piece: MinoType;
     rotation: MinoState;
@@ -202,6 +203,7 @@ export class GameManager {
     this.aiQueuedPlacement = null;
     this.aiWarmStartPlacements = [];
     this.aiGhostSequence = [];
+    this.aiPlanBoardHashes = [];
     this.renderer.setAIGhostSequence([]);
     if (this.aiEnabled) {
       this.triggerSearchIfNeeded();
@@ -309,6 +311,7 @@ export class GameManager {
               }),
             );
             this.aiWarmStartPlacements = this.aiGhostSequence.slice(1);
+            this.aiPlanBoardHashes = data.boardHashes ?? [];
 
             this.templateStock.store(
               BitBoard.fromGrid(this.core.board.grid),
@@ -388,9 +391,10 @@ export class GameManager {
       comboCount: this.core.comboCount,
       difficultClearCount: this.core.difficultClearCount,
       beamWidth: 20,
-      maxDepth: 12,
+      maxDepth: 10,
       timeLimitMs: 8000,
       warmStartPlacements: this.aiWarmStartPlacements,
+      planBoardHashes: this.aiPlanBoardHashes,
     });
     this.aiWarmStartPlacements = [];
   }
@@ -433,6 +437,7 @@ export class GameManager {
     this.aiGhostSequence = [];
     this.renderer.setAIGhostSequence([]);
     this.aiWarmStartPlacements = [];
+    this.aiPlanBoardHashes = [];
     this.aiQueuedPlacement = null;
 
     if (this.aiAutoEnabled && !this.aiContinuousEnabled) {
