@@ -21,6 +21,7 @@ export class GameManager {
   aiAutoEnabled: boolean = false;
   aiGhostSequence: Array<{ piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }> = [];
   private templateStock = new TemplateStock();
+  aiContinuousEnabled: boolean = false;
 
   constructor() {
     this.core = new GameCore();
@@ -48,10 +49,12 @@ export class GameManager {
   setupAI() {
     const toggle = document.getElementById('aiToggle') as HTMLInputElement | null;
     const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
+    const continuousToggle = document.getElementById('aiContinuousToggle') as HTMLInputElement | null;
 
     const updateAIEnabled = () => {
       this.aiEnabled = toggle?.checked ?? false;
       this.aiAutoEnabled = autoToggle?.checked ?? false;
+      this.aiContinuousEnabled = continuousToggle?.checked ?? false;
       const output = document.getElementById('aiOutput');
       const statusOverlay = document.getElementById('aiStatusOverlay');
       const statusText = document.getElementById('aiStatusText');
@@ -92,6 +95,7 @@ export class GameManager {
 
     toggle?.addEventListener('change', updateAIEnabled);
     autoToggle?.addEventListener('change', updateAIEnabled);
+    continuousToggle?.addEventListener('change', updateAIEnabled);
 
     updateAIEnabled();
   }
@@ -187,6 +191,11 @@ export class GameManager {
 
         if (this.aiAutoEnabled && this.aiGhostSequence.length > 0) {
           this.executeAIPlacement(this.aiGhostSequence[0]);
+          if (!this.aiContinuousEnabled) {
+            const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
+            if (autoToggle) autoToggle.checked = false;
+            this.aiAutoEnabled = false;
+          }
         }
         // 終了後、新たな探索が必要か確認
         if (this.aiPending) {
@@ -248,7 +257,8 @@ export class GameManager {
   private executeAIPlacement(p: { piece: MinoType; rotation: MinoState; x: number; y: number; lastActionWasRotation?: boolean; lastKickIndex?: number }) {
     if (this.core.state !== 'PLAYING') return;
     if (p.piece !== this.core.currentMino.type) {
-      this.core.executeHold();
+      // ホールドを実行して現在ミノを合わせる
+      this.core.hold();
     }
     const tetro = new Tetromino(p.piece);
     tetro.state = p.rotation;
