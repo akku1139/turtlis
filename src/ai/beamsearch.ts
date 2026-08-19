@@ -2,7 +2,7 @@ import type { SearchState, Placement } from './types.ts';
 import { generatePlacements as rawGeneratePlacements } from './movegen.ts';
 import { simulateLock, simulateHold } from './pure.ts';
 import { evaluateState as rawEvaluateState, countHoles } from './evaluate.ts';
-import { getMatrix } from './pure.ts';
+import { getMatrix, spawnX, spawnY } from './pure.ts';
 import type { BitBoard } from './bitboard.ts';
 import type { MinoType } from '../types.ts';
 
@@ -215,6 +215,13 @@ function advanceState(state: SearchState, p: Placement): SearchState | null {
   const nextBag = state.bag.slice();
   const nextCurrent = nextBag.shift();
   if (!nextCurrent) return null;
+
+  const nextMatrix = getMatrix(nextCurrent, 0);
+  const nextSpawnX = spawnX(nextCurrent);
+  const nextSpawnY = spawnY(nextCurrent, 0);
+  if (nextBoard.collides(nextMatrix, nextSpawnX, nextSpawnY)) {
+    return null;
+  }
 
   return {
     board: nextBoard,

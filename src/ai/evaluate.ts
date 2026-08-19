@@ -160,6 +160,48 @@ function countRowPotential(board: BitBoard): number {
   return potential;
 }
 
+function countDeepWellColumns(board: BitBoard): number {
+  let count = 0;
+  for (let x = 0; x < BOARD_WIDTH; x++) {
+    let col = board.cols[x];
+    let filled = false;
+    let holeDepth = 0;
+    for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
+      if (col & 1n) {
+        filled = true;
+        if (holeDepth >= 3) {
+          count++;
+          break;
+        }
+        holeDepth = 0;
+      } else if (filled) {
+        holeDepth++;
+      }
+      col >>= 1n;
+    }
+    if (holeDepth >= 3) {
+      count++;
+    }
+  }
+  return count;
+}
+
+// 上から空いている縦穴（オープンウェル）の本数を数える
+function countOpenWellColumns(board: BitBoard): number {
+  const heights = columnHeights(board);
+  let count = 0;
+  for (let x = 1; x < BOARD_WIDTH - 1; x++) {
+    if (heights[x] <= heights[x - 1] - 3 && heights[x] <= heights[x + 1] - 3) {
+      count++;
+    }
+  }
+  // 端のウェルも検出（壁との差）
+  if (heights[0] <= heights[1] - 3) count++;
+  if (heights[BOARD_WIDTH - 1] <= heights[BOARD_WIDTH - 2] - 3) count++;
+
+  return count;
+}
+
 export function computeTerrainScore(state: SearchState): TerrainScore {
   const board = state.board;
   const heights = columnHeights(board);
@@ -180,11 +222,28 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
     state.hold === 'I' ||
     state.bag.slice(0, 4).includes('I');
 
-  const heightPenalty = maxHeight > 16 ? (maxHeight - 16) ** 2 * 2 : 0;
+  const heightPenalty = (() => {
+    let penalty = 0;
+    if (maxHeight > 12) {
+      penalty += (maxHeight - 12) ** 2 * 4;      // 中盤から厳しく
+    }
+    if (maxHeight > 18) {
+      penalty += (maxHeight - 18) ** 3 * 15;     // 危険域では非常に厳しく
+    }
+    if (maxHeight >= 20) {
+      penalty += 800;                             // ゲームオーバー寸前
+    }
+    return penalty;
+  })();
+  const deepWellCount = countDeepWellColumns(board);
+  const openWellCount = countOpenWellColumns(board);
+
   const hazard =
     heightPenalty +
     holes * 12 +
     deepHolePenalty * 3 +
+    (deepWellCount > 1 ? (deepWellCount - 1) * 30 : 0) +  // ★ I依存ウェル2本以上を厳罰化
+    (openWellCount > 1 ? (openWellCount - 1) * 50 : 0) +  // ★ 2本目以降のオープンウェルを厳罰化
     (maxHeight > 20 ? 50 : 0);
 
   const b2bPotential =
