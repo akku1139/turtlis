@@ -60,7 +60,7 @@ export function generatePlacements(board: BitBoard, piece: MinoType): Placement[
   let startY = spawnY(piece, 0);
   const startMatrix = getMatrix(piece, 0);
 
-  // スポーン位置が埋まっていたら上へ退避（ゲーム本体の処理に合わせる）
+  // スポーン位置が埋まっていたら上へ退避
   if (board.collides(startMatrix, startX, startY)) {
     let found = false;
     for (let y = startY - 1; y >= 0; y--) {
@@ -83,14 +83,16 @@ export function generatePlacements(board: BitBoard, piece: MinoType): Placement[
 
   while (queue.length > 0) {
     const s = queue.shift()!;
-    const key = `${s.rot}|${s.x}|${s.y}`;
+
+    // ★ lastActionWasRotation を含めて visited を管理
+    const key = `${s.rot}|${s.x}|${s.y}|${s.lastActionWasRotation ? 1 : 0}`;
     if (visited.has(key)) continue;
     visited.add(key);
 
     const matrix = getMatrix(piece, s.rot);
     const grounded = isGrounded(board, matrix, s.x, s.y);
 
-    // 接地しているなら、そのままロック候補にする
+    // 接地しているならロック候補
     if (grounded) {
       addPlacement(result, {
         piece,
@@ -103,7 +105,7 @@ export function generatePlacements(board: BitBoard, piece: MinoType): Placement[
       });
     }
 
-    // 空中ならハードドロップした配置も通常ロック候補にする
+    // ハードドロップによるロック候補（空中の場合）
     if (!grounded) {
       const y = dropPiece(board, matrix, s.x, s.y);
       addPlacement(result, {
@@ -112,9 +114,22 @@ export function generatePlacements(board: BitBoard, piece: MinoType): Placement[
         x: s.x,
         y,
         matrix,
-        lastActionWasRotation: false, // 落下すると回転状態はリセットされる
+        lastActionWasRotation: false, // 落下すると回転状態は解除
         lastKickIndex: 0,
       });
+    }
+
+    // ★ 1セル下へ移動（ソフトドロップ相当）
+    if (!grounded) {
+      if (!board.collides(matrix, s.x, s.y + 1)) {
+        queue.push({
+          rot: s.rot,
+          x: s.x,
+          y: s.y + 1,
+          lastActionWasRotation: false, // 下移動で回転状態は解除
+          lastKickIndex: 0,
+        });
+      }
     }
 
     // 左右移動

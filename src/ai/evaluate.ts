@@ -3,19 +3,19 @@ import { BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
 import type { BitBoard } from './bitboard.ts';
 
 const WEIGHTS = {
-  accumulatedAttack: 12,
-  attackEfficiency: 2.0,        // 1ミノあたりの攻撃効率
-  b2bChain: 8,
+  accumulatedAttack: 9,
+  attackEfficiency: 3.5,
+  b2bChain: 10,
   combo: 2,
   terrain: 0.5,
   hazard: 8,
-  spinActionBonus: 10,          // スピン行動（T以外も）
-  spinClearBonus: 8,            // スピンで消去した場合
-  clearBonus: 1.5,              // 通常消去の加点は控えめ
-  b2bBreakPenalty: 30,          // B2Bを切る通常消去
-  allClearGoalBonus: 20,        // B2Bを維持したAll Clear
-  allClearBonus: 6,             // B2Bを切るAll Clearは低い
-  tSlotPotential: 1.0,
+  spinActionBonus: 16,
+  spinClearBonus: 12,
+  clearBonus: 1.0,
+  b2bBreakPenalty: 40,
+  allClearGoalBonus: 25,
+  allClearBonus: 5,
+  tSlotPotential: 1.2,
 };
 
 export function countHoles(board: BitBoard): number {
@@ -229,7 +229,7 @@ export function evaluateState(state: SearchState): number {
 
   // 将来のB2B継続ポテンシャル
   const futureB2BPotential =
-    terrain.tSlotCount * 1.2 * (0.5 + tAvailable * 0.4) +
+    terrain.tSlotCount * 1.5 * (0.5 + tAvailable * 0.4) +
     (terrain.quadWellDepth > 0
       ? iAvailable
         ? terrain.quadWellDepth * 0.8
@@ -247,11 +247,10 @@ export function evaluateState(state: SearchState): number {
   // ★ B2B カウントを非線形で評価
   const b2bCount = Math.max(0, state.difficultClearCount - 1);
   if (b2bCount > 0) {
-    // 基本値 + 2乗項 + 高カウント時のブレイク潜在価値
     value += b2bCount * WEIGHTS.b2bChain;
-    value += Math.pow(b2bCount, 2) * 0.8;
+    value += b2bCount * b2bCount * 1.5;
     if (b2bCount >= 4) {
-      value += (b2bCount - 3) * 2.0;
+      value += (b2bCount - 3) * 3.0;
     }
   }
 
