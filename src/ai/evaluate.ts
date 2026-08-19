@@ -194,7 +194,6 @@ export function computeTerrainScore(state: SearchState): TerrainScore {
         ? quadWellDepth * 1.2
         : -quadWellDepth * 2.0
       : 0) +
-    (state.difficultClearCount > 1 ? state.difficultClearCount * 1.0 : 0) +
     -bumpiness * 1.2 +
     -holes * 6.0 +
     -rowTransitions * 0.3 +
@@ -233,20 +232,29 @@ export function evaluateState(state: SearchState): number {
     terrain.tSlotCount * 1.2 * (0.5 + tAvailable * 0.4) +
     (terrain.quadWellDepth > 0
       ? iAvailable
-        ? terrain.quadWellDepth * 0.8   // 控えめに（スピンを優先）
+        ? terrain.quadWellDepth * 0.8
         : -terrain.quadWellDepth * 3.0
       : 0);
 
   let value = 0;
   value += state.accumulatedAttack * WEIGHTS.accumulatedAttack;
   value += attackPerPiece * WEIGHTS.attackEfficiency;
-  value += Math.max(0, state.difficultClearCount - 1) * WEIGHTS.b2bChain;
   value += Math.max(0, state.comboCount - 1) * WEIGHTS.combo;
   value += terrain.total * WEIGHTS.terrain;
   value -= terrain.hazard * WEIGHTS.hazard;
   value += futureB2BPotential;
 
-  // スピン行動の強力な加点
+  // ★ B2B カウントを非線形で評価
+  const b2bCount = Math.max(0, state.difficultClearCount - 1);
+  if (b2bCount > 0) {
+    // 基本値 + 2乗項 + 高カウント時のブレイク潜在価値
+    value += b2bCount * WEIGHTS.b2bChain;
+    value += Math.pow(b2bCount, 2) * 0.8;
+    if (b2bCount >= 4) {
+      value += (b2bCount - 3) * 2.0;
+    }
+  }
+
   if (state.lastSpinAction) {
     value += WEIGHTS.spinActionBonus;
     if (state.lastCleared > 0) {

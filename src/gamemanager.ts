@@ -32,14 +32,14 @@ export class GameManager {
   }> = [];
   private lastProcessedPiecesPlaced = -1;
   private aiPlanBoardHashes: string[] = [];
-  private aiQueuedPlacement: {
+  private aiPlacementQueue: Array<{
     piece: MinoType;
     rotation: MinoState;
     x: number;
     y: number;
     lastActionWasRotation?: boolean;
     lastKickIndex?: number;
-  } | null = null;
+  }> = [];
 
   aiGhostSequence: Array<{
     piece: MinoType;
@@ -177,7 +177,7 @@ export class GameManager {
         if (stockCount) stockCount.textContent = '';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
-        this.aiQueuedPlacement = null;
+        this.aiPlacementQueue = [];
         this.aiWarmStartPlacements = [];
         this.restartSearch(); // Ensure worker stopped
       }
@@ -200,7 +200,7 @@ export class GameManager {
     this.aiSearchId = 0;
     this.lastSearchKey = '';
     this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
-    this.aiQueuedPlacement = null;
+    this.aiPlacementQueue = [];       // ★ キューをクリア
     this.aiWarmStartPlacements = [];
     this.aiGhostSequence = [];
     this.aiPlanBoardHashes = [];
@@ -229,7 +229,7 @@ export class GameManager {
 
     const key = this.getSearchKey();
     if (key === this.lastSearchKey) return;
-    if (this.aiQueuedPlacement) return;
+    if (this.aiPlacementQueue.length > 0) return; // ★ キューが残っていれば探索しない
     this.lastSearchKey = key;
 
     const board = BitBoard.fromGrid(this.core.board.grid);
@@ -240,12 +240,14 @@ export class GameManager {
       this.core.holdType,
     );
 
-    if (!this.aiAutoEnabled && stockResult && stockResult.placements.length > 0) {
+    if (stockResult && stockResult.placements.length > 0) {
       this.aiGhostSequence = stockResult.placements;
       this.aiWarmStartPlacements = stockResult.placements.slice(1);
       this.renderer.setAIGhostSequence(this.aiGhostSequence);
+
       if (this.aiAutoEnabled) {
-        this.aiQueuedPlacement = this.aiGhostSequence[0];
+        // 自動操作時はテンプレートの手順をすべてキューに入れる
+        this.aiPlacementQueue = [...this.aiGhostSequence];
       }
       return;
     }
@@ -324,11 +326,13 @@ export class GameManager {
             if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
 
             if (this.aiAutoEnabled) {
-              this.aiQueuedPlacement = this.aiGhostSequence[0];
+              // ★ キューに全手をセット
+              this.aiPlacementQueue = [...this.aiGhostSequence];
             }
           } else {
             this.aiGhostSequence = [];
             this.aiWarmStartPlacements = [];
+            this.aiPlacementQueue = [];
           }
           this.renderer.setAIGhostSequence(this.aiGhostSequence);
         } else if (data.type === 'progress') {
@@ -410,9 +414,15 @@ export class GameManager {
     if (this.core.state !== 'PLAYING') return;
 
     if (p.piece !== this.core.currentMino.type) {
-      if (!this.core.canHold) return;
+      if (!this.core.canHold) {
+        this.aiPlacementQueue = []; // ★ キューを破棄
+        return;
+      }
       this.core.hold();
-      if (this.core.currentMino.type !== p.piece) return;
+      if (this.core.currentMino.type !== p.piece) {
+        this.aiPlacementQueue = [];
+        return;
+      }
     }
 
     const matrix = getMatrix(p.piece, p.rotation);
@@ -420,6 +430,7 @@ export class GameManager {
       this.aiGhostSequence = [];
       this.renderer.setAIGhostSequence([]);
       this.aiWarmStartPlacements = [];
+      this.aiPlacementQueue = [];
       this.lastSearchKey = '';
       return;
     }
@@ -438,7 +449,7 @@ export class GameManager {
     this.renderer.setAIGhostSequence([]);
     this.aiWarmStartPlacements = [];
     this.aiPlanBoardHashes = [];
-    this.aiQueuedPlacement = null;
+    // aiPlacementQueue は shift 済みなのでここでクリアしない
 
     if (this.aiAutoEnabled && !this.aiContinuousEnabled) {
       const autoToggle = document.getElementById('aiAutoToggle') as HTMLInputElement | null;
@@ -461,12 +472,13 @@ export class GameManager {
     this.input.update(dt);
     this.core.update(dt);
 
-    if (this.aiQueuedPlacement && this.aiAutoEnabled && this.core.state === 'PLAYING') {
-      const placement = this.aiQueuedPlacement;
-      this.aiQueuedPlacement = null;
-      this.executeAIPlacement(placement);
-      this.lastSearchKey = '';
-      this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
+    if (this.aiPlacementQueue.length > 0 && this.aiAutoEnabled && this.core.state === 'PLAYING') {
+      const placement = this.aiPlacementQueue.shift();
+      if (placement) {
+        this.executeAIPlacement(placement);
+        this.lastSearchKey = '';
+        this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
+      }
     }
 
     this.renderer.render(this.core);

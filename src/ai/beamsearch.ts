@@ -6,6 +6,8 @@ import { getMatrix } from './pure.ts';
 import type { BitBoard } from './bitboard.ts';
 import type { MinoType } from '../types.ts';
 
+const MAX_CACHE_ENTRIES = 20000;
+
 const placementCache = new Map<string, Placement[]>();
 
 function generatePlacements(board: BitBoard, piece: MinoType): Placement[] {
@@ -15,19 +17,48 @@ function generatePlacements(board: BitBoard, piece: MinoType): Placement[] {
 
   const placements = rawGeneratePlacements(board, piece);
   placementCache.set(key, placements);
+
+  if (placementCache.size > MAX_CACHE_ENTRIES) {
+    const firstKey = placementCache.keys().next().value;
+    if (firstKey !== undefined) placementCache.delete(firstKey);
+  }
+
   return placements;
 }
 
 const evalCache = new Map<string, number>();
 
 function evaluateState(state: SearchState): number {
-  const key = `${state.board.hash().toString()}|${state.current}|${state.bag.join(',')}|${state.hold}|${state.comboCount}|${state.difficultClearCount}|${state.accumulatedAttack}|${state.lastSpinAction}|${state.lastCleared}`;
+  const key = [
+    state.board.hash().toString(),
+    state.current,
+    state.bag.join(','),
+    state.hold,
+    state.comboCount,
+    state.difficultClearCount,
+    state.accumulatedAttack,
+    state.placements.length, // attackEfficiency で使用するため必要
+    state.lastSpinAction,
+    state.lastCleared,
+  ].join('|');
+
   const cached = evalCache.get(key);
   if (cached !== undefined) return cached;
 
   const value = rawEvaluateState(state);
   evalCache.set(key, value);
+
+  if (evalCache.size > MAX_CACHE_ENTRIES) {
+    const firstKey = evalCache.keys().next().value;
+    if (firstKey !== undefined) evalCache.delete(firstKey);
+  }
+
   return value;
+}
+
+function isGoalAllClear(state: SearchState): boolean {
+  // シミュレーション上、All Clear 後は difficultClearCount が必ず 2 以上になる
+  return state.board.isEmpty() && state.lastCleared > 0 && state.difficultClearCount > 1;
 }
 
 export function beamSearch(
@@ -96,6 +127,17 @@ export function beamSearch(
     }
 
     if (candidates.length === 0) break;
+
+    // ★ All Clear を発見したら即座に最良候補を返す
+    let bestGoal: SearchState | null = null;
+    for (const c of candidates) {
+      if (isGoalAllClear(c)) {
+        if (!bestGoal || c.accumulatedAttack > bestGoal.accumulatedAttack) {
+          bestGoal = c;
+        }
+      }
+    }
+    if (bestGoal) return bestGoal;
 
     // 物理状態キーによる重複除去
     // 盤面 + 現在ミノ + バッグ + ホールド + コンボ + B2B が同じなら
