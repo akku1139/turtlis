@@ -2,18 +2,20 @@ import type { SearchState, TerrainScore } from './types.ts';
 import { BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
 import type { BitBoard } from './bitboard.ts';
 
-// B2B・攻撃を重視した重み
 const WEIGHTS = {
   accumulatedAttack: 12,
-  b2bChain: 6,
+  attackEfficiency: 2.0,        // 1ミノあたりの攻撃効率
+  b2bChain: 8,
   combo: 2,
   terrain: 0.5,
   hazard: 8,
-  spinActionBonus: 5,
-  clearBonus: 2,
-  b2bBreakPenalty: 15,
-  allClearBonus: 40,
-  tSlotPotential: 0.9,
+  spinActionBonus: 10,          // スピン行動（T以外も）
+  spinClearBonus: 8,            // スピンで消去した場合
+  clearBonus: 1.5,              // 通常消去の加点は控えめ
+  b2bBreakPenalty: 30,          // B2Bを切る通常消去
+  allClearGoalBonus: 20,        // B2Bを維持したAll Clear
+  allClearBonus: 6,             // B2Bを切るAll Clearは低い
+  tSlotPotential: 1.0,
 };
 
 export function countHoles(board: BitBoard): number {
@@ -223,34 +225,52 @@ export function evaluateState(state: SearchState): number {
     state.bag.filter((p) => p === 'I').length +
     (state.hold === 'I' ? 1 : 0);
 
-  // 将来的にB2Bを継続できる余地
+  const piecesUsed = Math.max(1, state.placements.length);
+  const attackPerPiece = state.accumulatedAttack / piecesUsed;
+
+  // 将来のB2B継続ポテンシャル
   const futureB2BPotential =
     terrain.tSlotCount * 1.2 * (0.5 + tAvailable * 0.4) +
     (terrain.quadWellDepth > 0
       ? iAvailable
-        ? terrain.quadWellDepth * 1.5
-        : -terrain.quadWellDepth * 2.0
+        ? terrain.quadWellDepth * 0.8   // 控えめに（スピンを優先）
+        : -terrain.quadWellDepth * 3.0
       : 0);
 
   let value = 0;
-  value += state.accumulatedAttack * 12;
-  value += Math.max(0, state.difficultClearCount - 1) * 7;
-  value += Math.max(0, state.comboCount - 1) * 2.5;
-  value += terrain.total * 0.5;
-  value -= terrain.hazard * 8;
+  value += state.accumulatedAttack * WEIGHTS.accumulatedAttack;
+  value += attackPerPiece * WEIGHTS.attackEfficiency;
+  value += Math.max(0, state.difficultClearCount - 1) * WEIGHTS.b2bChain;
+  value += Math.max(0, state.comboCount - 1) * WEIGHTS.combo;
+  value += terrain.total * WEIGHTS.terrain;
+  value -= terrain.hazard * WEIGHTS.hazard;
   value += futureB2BPotential;
 
-  if (state.lastSpinAction && state.lastCleared > 0) {
-    value += 6;
+  // スピン行動の強力な加点
+  if (state.lastSpinAction) {
+    value += WEIGHTS.spinActionBonus;
+    if (state.lastCleared > 0) {
+      value += WEIGHTS.spinClearBonus;
+    }
   }
-  value += state.lastCleared * 2;
 
+  // B2Bを切る通常消去（非スピンで1～3列）への強いペナルティ
   if (state.lastCleared > 0 && state.lastCleared < 4 && !state.lastSpinAction) {
-    value -= 15;
+    value -= WEIGHTS.b2bBreakPenalty;
   }
 
+  // 通常消去の加点（スピン以外の消去は弱く）
+  value += state.lastCleared * WEIGHTS.clearBonus;
+
+  // All Clear
   if (state.board.isEmpty() && state.lastCleared > 0) {
-    value += 50;
+    if (state.difficultClearCount > 1) {
+      // B2Bを維持したAll Clear（理想）
+      value += WEIGHTS.allClearGoalBonus;
+    } else {
+      // B2Bを切ったAll Clearはあまり価値がない
+      value += WEIGHTS.allClearBonus;
+    }
   }
 
   return value;
