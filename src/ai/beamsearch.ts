@@ -1,8 +1,34 @@
 import type { SearchState, Placement } from './types.ts';
-import { generatePlacements } from './movegen.ts';
+import { generatePlacements as rawGeneratePlacements } from './movegen.ts';
 import { simulateLock, simulateHold } from './pure.ts';
-import { evaluateState, countHoles } from './evaluate.ts';
+import { evaluateState as rawEvaluateState, countHoles } from './evaluate.ts';
 import { getMatrix } from './pure.ts';
+import type { BitBoard } from './bitboard.ts';
+import type { MinoType } from '../types.ts';
+
+const placementCache = new Map<string, Placement[]>();
+
+function generatePlacements(board: BitBoard, piece: MinoType): Placement[] {
+  const key = `${board.hash().toString()}|${piece}`;
+  const cached = placementCache.get(key);
+  if (cached) return cached;
+
+  const placements = rawGeneratePlacements(board, piece);
+  placementCache.set(key, placements);
+  return placements;
+}
+
+const evalCache = new Map<string, number>();
+
+function evaluateState(state: SearchState): number {
+  const key = `${state.board.hash().toString()}|${state.current}|${state.bag.join(',')}|${state.hold}|${state.comboCount}|${state.difficultClearCount}|${state.accumulatedAttack}|${state.lastSpinAction}|${state.lastCleared}`;
+  const cached = evalCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const value = rawEvaluateState(state);
+  evalCache.set(key, value);
+  return value;
+}
 
 export function beamSearch(
   root: SearchState,
