@@ -131,7 +131,7 @@ export function beamSearch(
 
   if (beam.length === 0) return root;
 
-  beam.sort((a, b) => evaluateState(b) - evaluateState(a));
+  beam.sort((a, b) => oneStepLookahead(b) - oneStepLookahead(a));
   return beam[0];
 }
 
@@ -235,4 +235,47 @@ function getMatrixForPlacement(p: Placement): number[][] {
   // p に matrix が含まれない場合は再取得
   if (p.matrix) return p.matrix;
   return getMatrix(p.piece, p.rotation);
+}
+
+function oneStepLookahead(state: SearchState): number {
+  let best = evaluateState(state);
+
+  // 現在ミノを直接置く
+  const directPlacements = generatePlacements(state.board, state.current);
+  for (const p of directPlacements) {
+    const next = advanceState(state, p);
+    if (next) {
+      const v = evaluateState(next);
+      if (v > best) best = v;
+    }
+  }
+
+  // ホールドしてから置く
+  if (state.canHold && (state.hold !== null || state.bag.length > 0)) {
+    const held = simulateHold(state.current, state.hold, state.bag);
+    const heldState: SearchState = {
+      board: state.board.clone(),
+      current: held.newCurrent,
+      bag: held.newBag,
+      hold: held.newHold,
+      canHold: false,
+      comboCount: state.comboCount,
+      difficultClearCount: state.difficultClearCount,
+      accumulatedAttack: state.accumulatedAttack,
+      accumulatedScore: state.accumulatedScore,
+      placements: state.placements,
+      lastSpinAction: state.lastSpinAction,
+      lastCleared: state.lastCleared,
+    };
+    const heldPlacements = generatePlacements(heldState.board, heldState.current);
+    for (const p of heldPlacements) {
+      const next = advanceState(heldState, p);
+      if (next) {
+        const v = evaluateState(next);
+        if (v > best) best = v;
+      }
+    }
+  }
+
+  return best;
 }

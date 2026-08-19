@@ -1,27 +1,17 @@
 import type { MinoType, MinoState } from '../types.ts';
 import { getMatrix, spawnX, spawnY } from './pure.ts';
+import { SRSPlusKickTable } from '../kicktable.ts';
 import type { BitBoard } from './bitboard.ts';
 import type { Placement } from './types.ts';
-import { BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
-import { SRSPlusKickTable } from '../kicktable.ts';
 
 const kickTable = new SRSPlusKickTable();
 
-function getMaxStackHeight(board: BitBoard): number {
-  let max = 0;
-  for (let x = 0; x < BOARD_WIDTH; x++) {
-    let col = board.cols[x];
-    let y = 0;
-    while (col !== 0n && y < BOARD_TOTAL_HEIGHT) {
-      if (col & 1n) {
-        max = Math.max(max, BOARD_TOTAL_HEIGHT - y);
-        break;
-      }
-      col >>= 1n;
-      y++;
-    }
-  }
-  return max;
+interface BFSNode {
+  rot: MinoState;
+  x: number;
+  y: number;
+  lastActionWasRotation: boolean;
+  lastKickIndex: number;
 }
 
 function dropPiece(board: BitBoard, matrix: number[][], x: number, y: number): number {
@@ -40,13 +30,7 @@ function rotateAt(
   dir: 'CW' | 'CCW' | '180',
   x: number,
   y: number,
-): {
-  x: number;
-  y: number;
-  rotation: MinoState;
-  matrix: number[][];
-  lastKickIndex: number;
-} | null {
+): { x: number; y: number; rotation: MinoState; matrix: number[][]; lastKickIndex: number } | null {
   const toRot = (fromRot + (dir === 'CW' ? 1 : dir === 'CCW' ? 3 : 2)) % 4 as MinoState;
   const kicks = kickTable.getKicks(piece, fromRot, toRot);
   const matrix = getMatrix(piece, toRot);
@@ -62,85 +46,107 @@ function rotateAt(
   return null;
 }
 
-function addUnique(map: Map<string, Placement>, p: Placement) {
+function addPlacement(map: Map<string, Placement>, p: Placement) {
   const key = `${p.piece}|${p.rotation}|${p.x}|${p.y}|${p.lastActionWasRotation}|${p.lastKickIndex}`;
   if (!map.has(key)) map.set(key, p);
 }
 
-function generateOPlacements(board: BitBoard): Placement[] {
-  const matrix = getMatrix('O', 0);
-  const sy = spawnY('O', 0);
-  const result: Placement[] = [];
-  for (let x = 0; x <= 8; x++) {
-    if (board.collides(matrix, x, sy)) continue;
-    const y = dropPiece(board, matrix, x, sy);
-    result.push({
-      piece: 'O',
-      rotation: 0,
-      x,
-      y,
-      matrix,
-      lastActionWasRotation: false,
-      lastKickIndex: 0,
-    });
-  }
-  return result;
-}
-
-function generateNonOPlacements(board: BitBoard, piece: MinoType): Placement[] {
+export function generatePlacements(board: BitBoard, piece: MinoType): Placement[] {
   const result = new Map<string, Placement>();
+  const visited = new Set<string>();
+  const queue: BFSNode[] = [];
 
-  // 直接落下（全回転・全 x）
-  for (let rotation = 0 as MinoState; rotation < 4; rotation++) {
-    const matrix = getMatrix(piece, rotation);
-    const sy = spawnY(piece, rotation);
-    for (let x = -3; x <= BOARD_WIDTH + 2; x++) {
-      if (board.collides(matrix, x, sy)) continue;
-      const y = dropPiece(board, matrix, x, sy);
-      addUnique(result, {
+  const startX = spawnX(piece);
+  let startY = spawnY(piece, 0);
+  const startMatrix = getMatrix(piece, 0);
+
+  // スポーン位置が埋まっていたら上へ退避（ゲーム本体の処理に合わせる）
+  if (board.collides(startMatrix, startX, startY)) {
+    let found = false;
+    for (let y = startY - 1; y >= 0; y--) {
+      if (!board.collides(startMatrix, startX, y)) {
+        startY = y;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return [];
+  }
+
+  queue.push({
+    rot: 0,
+    x: startX,
+    y: startY,
+    lastActionWasRotation: false,
+    lastKickIndex: 0,
+  });
+
+  while (queue.length > 0) {
+    const s = queue.shift()!;
+    const key = `${s.rot}|${s.x}|${s.y}`;
+    if (visited.has(key)) continue;
+    visited.add(key);
+
+    const matrix = getMatrix(piece, s.rot);
+    const grounded = isGrounded(board, matrix, s.x, s.y);
+
+    // 接地しているなら、そのままロック候補にする
+    if (grounded) {
+      addPlacement(result, {
         piece,
-        rotation,
-        x,
+        rotation: s.rot,
+        x: s.x,
+        y: s.y,
+        matrix,
+        lastActionWasRotation: s.lastActionWasRotation,
+        lastKickIndex: s.lastKickIndex,
+      });
+    }
+
+    // 空中ならハードドロップした配置も通常ロック候補にする
+    if (!grounded) {
+      const y = dropPiece(board, matrix, s.x, s.y);
+      addPlacement(result, {
+        piece,
+        rotation: s.rot,
+        x: s.x,
         y,
         matrix,
-        lastActionWasRotation: false,
+        lastActionWasRotation: false, // 落下すると回転状態はリセットされる
         lastKickIndex: 0,
       });
     }
-  }
 
-  // 接地位置での回転によるスピン配置を生成
-  const directDrops = Array.from(result.values());
-  for (const base of directDrops) {
-    for (const dir of ['CW', 'CCW', '180'] as const) {
-      const rotated = rotateAt(board, piece, base.rotation, dir, base.x, base.y);
-      if (!rotated) continue;
+    // 左右移動
+    for (const dx of [-1, 1]) {
+      const nx = s.x + dx;
+      if (!board.collides(matrix, nx, s.y)) {
+        queue.push({
+          rot: s.rot,
+          x: nx,
+          y: s.y,
+          lastActionWasRotation: false,
+          lastKickIndex: 0,
+        });
+      }
+    }
 
-      // 回転後に浮いていれば実際は落下してスピンが消えるため、接地している場合のみ採用
-      if (!isGrounded(board, rotated.matrix, rotated.x, rotated.y)) continue;
-
-      addUnique(result, {
-        piece,
-        rotation: rotated.rotation,
-        x: rotated.x,
-        y: rotated.y,
-        matrix: rotated.matrix,
-        lastActionWasRotation: true,
-        lastKickIndex: rotated.lastKickIndex,
-      });
+    // 回転（Oミノ以外）
+    if (piece !== 'O') {
+      for (const dir of ['CW', 'CCW', '180'] as const) {
+        const r = rotateAt(board, piece, s.rot, dir, s.x, s.y);
+        if (r) {
+          queue.push({
+            rot: r.rotation,
+            x: r.x,
+            y: r.y,
+            lastActionWasRotation: true,
+            lastKickIndex: r.lastKickIndex,
+          });
+        }
+      }
     }
   }
 
   return Array.from(result.values());
-}
-
-export function generatePlacements(board: BitBoard, piece: MinoType): Placement[] {
-  if (piece === 'O') {
-    return generateOPlacements(board);
-  }
-  return generateNonOPlacements(board, piece);
-}
-
-export function generatePlacementsFast(board: BitBoard, piece: MinoType): Placement[] {
-  return generatePlacements(board, piece);
 }

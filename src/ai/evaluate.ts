@@ -218,25 +218,39 @@ export function evaluateState(state: SearchState): number {
     state.bag.filter((p) => p === 'T').length +
     (state.hold === 'T' ? 1 : 0);
 
+  const iAvailable =
+    (state.current === 'I' ? 1 : 0) +
+    state.bag.filter((p) => p === 'I').length +
+    (state.hold === 'I' ? 1 : 0);
+
+  // 将来的にB2Bを継続できる余地
+  const futureB2BPotential =
+    terrain.tSlotCount * 1.2 * (0.5 + tAvailable * 0.4) +
+    (terrain.quadWellDepth > 0
+      ? iAvailable
+        ? terrain.quadWellDepth * 1.5
+        : -terrain.quadWellDepth * 2.0
+      : 0);
+
   let value = 0;
-  value += state.accumulatedAttack * WEIGHTS.accumulatedAttack;
-  value += Math.max(0, state.difficultClearCount - 1) * WEIGHTS.b2bChain;
-  value += Math.max(0, state.comboCount - 1) * WEIGHTS.combo;
-  value += terrain.total * WEIGHTS.terrain;
-  value -= terrain.hazard * WEIGHTS.hazard;
-  value += terrain.tSlotCount * WEIGHTS.tSlotPotential * (0.5 + tAvailable * 0.3);
+  value += state.accumulatedAttack * 12;
+  value += Math.max(0, state.difficultClearCount - 1) * 7;
+  value += Math.max(0, state.comboCount - 1) * 2.5;
+  value += terrain.total * 0.5;
+  value -= terrain.hazard * 8;
+  value += futureB2BPotential;
 
   if (state.lastSpinAction && state.lastCleared > 0) {
-    value += WEIGHTS.spinActionBonus;
+    value += 6;
   }
-  value += state.lastCleared * WEIGHTS.clearBonus;
+  value += state.lastCleared * 2;
 
   if (state.lastCleared > 0 && state.lastCleared < 4 && !state.lastSpinAction) {
-    value -= WEIGHTS.b2bBreakPenalty;
+    value -= 15;
   }
 
   if (state.board.isEmpty() && state.lastCleared > 0) {
-    value += WEIGHTS.allClearBonus;
+    value += 50;
   }
 
   return value;
