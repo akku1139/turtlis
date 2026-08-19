@@ -3,7 +3,6 @@ import { generatePlacements } from './movegen.ts';
 import { simulateLock, simulateHold } from './pure.ts';
 import { evaluateState, countHoles } from './evaluate.ts';
 import { getMatrix } from './pure.ts';
-import type { MinoState } from '../types.ts';
 
 export function beamSearch(
   root: SearchState,
@@ -40,33 +39,8 @@ export function beamSearch(
       // 現在ミノをそのまま配置
       const placements = generatePlacements(state.board, state.current);
       for (const p of placements) {
-        const { result, nextBoard } = simulateLock(
-          state.board,
-          p,
-          state.comboCount,
-          state.difficultClearCount,
-          1, // levelは簡易的に1で固定（必要に応じて変更）
-        );
-        const nextBag = state.bag.slice();
-        const nextCurrent = nextBag.shift();
-        if (!nextCurrent) continue;
-
-        const nextState: SearchState = {
-          board: nextBoard,
-          current: nextCurrent,
-          bag: nextBag,
-          hold: state.hold,
-          canHold: true,
-          comboCount: result.newComboCount,
-          difficultClearCount: result.newDifficultClearCount,
-          accumulatedAttack: state.accumulatedAttack + result.totalAttack,
-          accumulatedScore: state.accumulatedScore + result.scoreGained,
-          placements: [...state.placements, p],
-          lastSpinAction: result.isSpinAction,
-          lastCleared: result.cleared,
-          depth: d + 1,
-        };
-        candidates.push(nextState);
+        const nextState = advanceState(state, p);
+        if (nextState) candidates.push(nextState);
       }
 
       // ホールドしてから配置
@@ -83,58 +57,48 @@ export function beamSearch(
           accumulatedAttack: state.accumulatedAttack,
           accumulatedScore: state.accumulatedScore,
           placements: state.placements,
+          lastSpinAction: state.lastSpinAction,
+          lastCleared: state.lastCleared,
         };
+
         const heldPlacements = generatePlacements(heldState.board, heldState.current);
         for (const p of heldPlacements) {
-          const { result, nextBoard } = simulateLock(
-            heldState.board,
-            p,
-            heldState.comboCount,
-            heldState.difficultClearCount,
-            1,
-          );
-          const nextBag = heldState.bag.slice();
-          const nextCurrent = nextBag.shift();
-          if (!nextCurrent) continue;
-
-          const nextState: SearchState = {
-            board: nextBoard,
-            current: nextCurrent,
-            bag: nextBag,
-            hold: heldState.hold,
-            canHold: true,
-            comboCount: result.newComboCount,
-            difficultClearCount: result.newDifficultClearCount,
-            accumulatedAttack: heldState.accumulatedAttack + result.totalAttack,
-            accumulatedScore: heldState.accumulatedScore + result.scoreGained,
-            placements: [...heldState.placements, p],
-            lastSpinAction: result.isSpinAction,
-            lastCleared: result.cleared,
-            depth: d + 1,
-          };
-          candidates.push(nextState);
+          const nextState = advanceState(heldState, p);
+          if (nextState) candidates.push(nextState);
         }
       }
     }
 
     if (candidates.length === 0) break;
 
-    // 重複除去（盤面・バッグ・攻撃力などを考慮）
+    // 物理状態キーによる重複除去
+    // 盤面 + 現在ミノ + バッグ + ホールド + コンボ + B2B が同じなら
+    // accumulatedAttack が最大のものだけを残す
     const seen = new Map<string, SearchState>();
     for (const c of candidates) {
-      const key = `${c.board.hash()}|${c.bag.join(',')}|${c.hold}|${c.comboCount}|${c.difficultClearCount}|${c.accumulatedAttack}`;
-      if (!seen.has(key)) seen.set(key, c);
+      const key = physicalKey(c);
+      const old = seen.get(key);
+      if (
+        !old ||
+        c.accumulatedAttack > old.accumulatedAttack ||
+        (c.accumulatedAttack === old.accumulatedAttack &&
+          c.accumulatedScore > old.accumulatedScore)
+      ) {
+        seen.set(key, c);
+      }
     }
-    const unique = Array.from(seen.values());
+    let unique = Array.from(seen.values());
 
-    // 評価値 + 前回計画との一致ボーナスでソート
+    // 前回計画との一致ボーナス
     const planBonus = (s: SearchState): number => {
       if (planBoardHashes && s.depth !== undefined && s.depth < planBoardHashes.length) {
         return s.board.hash().toString() === planBoardHashes[s.depth] ? 6.0 : 0.0;
       }
       return 0.0;
     };
-    const scored = unique.map(s => {
+
+    // 穴の減少ボーナス
+    const scored = unique.map((s) => {
       const holesNow = countHoles(s.board);
       const holeBonus = (initialHoles - holesNow) * 5.0;
       return {
@@ -142,19 +106,14 @@ export function beamSearch(
         score: evaluateState(s) + planBonus(s) + holeBonus,
       };
     });
+
     scored.sort((a, b) => b.score - a.score);
     for (let i = 0; i < scored.length; i++) {
       unique[i] = scored[i].s;
     }
 
-    // スピン状態を優先してビームを構成する（新しい探索視点）
-    const spinStates = unique.filter((s) => s.lastSpinAction && s.lastCleared > 0);
-    const normalStates = unique.filter((s) => !(s.lastSpinAction && s.lastCleared > 0));
-    const spinSlots = Math.min(spinStates.length, Math.floor(beamWidth * 0.6));
-    const topSpins = spinStates.slice(0, spinSlots);
-    const remainingSlots = beamWidth - topSpins.length;
-    const topNormals = normalStates.slice(0, remainingSlots);
-    beam = [...topSpins, ...topNormals];
+    // ビーム幅を超えた分を削減
+    beam = unique.slice(0, beamWidth);
 
     if (timeLimitMs && Date.now() - searchStart > timeLimitMs) {
       break;
@@ -170,9 +129,44 @@ export function beamSearch(
     }
   }
 
-  // 最終ビームの最良を返す
+  if (beam.length === 0) return root;
+
   beam.sort((a, b) => evaluateState(b) - evaluateState(a));
   return beam[0];
+}
+
+function advanceState(state: SearchState, p: Placement): SearchState | null {
+  const { result, nextBoard } = simulateLock(
+    state.board,
+    p,
+    state.comboCount,
+    state.difficultClearCount,
+    1,
+  );
+
+  const nextBag = state.bag.slice();
+  const nextCurrent = nextBag.shift();
+  if (!nextCurrent) return null;
+
+  return {
+    board: nextBoard,
+    current: nextCurrent,
+    bag: nextBag,
+    hold: state.hold,
+    canHold: true,
+    comboCount: result.newComboCount,
+    difficultClearCount: result.newDifficultClearCount,
+    accumulatedAttack: state.accumulatedAttack + result.totalAttack,
+    accumulatedScore: state.accumulatedScore + result.scoreGained,
+    placements: [...state.placements, p],
+    lastSpinAction: result.isSpinAction,
+    lastCleared: result.cleared,
+    depth: (state.depth ?? 0) + 1,
+  };
+}
+
+function physicalKey(s: SearchState): string {
+  return `${s.board.hash().toString()}|${s.current}|${s.bag.join(',')}|${s.hold}|${s.comboCount}|${s.difficultClearCount}`;
 }
 
 function applyWarmStart(
@@ -197,13 +191,8 @@ function applyWarmStart(
     }
 
     const placement: Placement = {
-      piece: p.piece,
-      rotation: p.rotation as MinoState,
-      x: p.x,
-      y: p.y,
-      matrix: getMatrix(p.piece, p.rotation as MinoState),
-      lastActionWasRotation: p.lastActionWasRotation ?? false,
-      lastKickIndex: p.lastKickIndex ?? 0,
+      ...p,
+      matrix: getMatrixForPlacement(p),
     };
 
     if (state.board.collides(placement.matrix, placement.x, placement.y)) {
@@ -240,4 +229,10 @@ function applyWarmStart(
   }
 
   return { state, appliedCount: applied.length };
+}
+
+function getMatrixForPlacement(p: Placement): number[][] {
+  // p に matrix が含まれない場合は再取得
+  if (p.matrix) return p.matrix;
+  return getMatrix(p.piece, p.rotation);
 }
