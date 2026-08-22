@@ -25,6 +25,25 @@ self.onmessage = (e: MessageEvent) => {
           timeLimitMs: data.timeLimitMs ?? 2500,
           pruneHoles: false,
           preferredBoardHashes: undefined,
+          onProgress: (info) => {
+            (self as unknown as DedicatedWorkerGlobalScope).postMessage({
+              type: 'progress',
+              searchId,
+              searchKey,
+              depth: info.depth,
+              totalDepth: data.maxDepth ?? 8,
+              candidates: info.nodes,
+              bestAttack: info.attack,
+              placements: info.placements.map((p) => ({
+                piece: p.piece,
+                rotation: p.rotation,
+                x: p.x,
+                y: p.y,
+                lastActionWasRotation: p.lastActionWasRotation,
+                lastKickIndex: p.lastKickIndex,
+              })),
+            });
+          },
         },
       );
 

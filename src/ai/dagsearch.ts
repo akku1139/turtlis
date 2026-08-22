@@ -34,6 +34,13 @@ export interface DagSearchOptions {
    * 一致する子に小さなボーナスを与え、計画の一貫性（振り子現象）を抑える。
    */
   preferredBoardHashes?: string[];
+  /** 探索中の現時点最善計画を定期報告（UIゴースト表示用） */
+  onProgress?: (info: {
+    placements: Placement[];
+    attack: number;
+    nodes: number;
+    depth: number;
+  }) => void;
 }
 
 export interface DagSearchResult {
@@ -203,10 +210,12 @@ export function dagSearch(
   heap.push(rootNode);
   let nodeCount = 1;
 
+  let expansions = 0;
   while (heap.size > 0 && nodeCount < options.nodeBudget) {
     if ((nodeCount & 15) === 0 && Date.now() > deadline) break;
 
     const node = heap.pop()!;
+    expansions++;
     if (node.expanded || node.dead) continue;
     if (node.depth >= options.depth) continue;
 
@@ -235,28 +244,57 @@ export function dagSearch(
         heap.push(c.node);
       }
     }
+
+    // 定期的に現時点の最善計画を報告（UIゴースト用）
+    if (options.onProgress && (expansions & 63) === 0) {
+      reportProgress();
+    }
   }
 
   // 根の最善手から計画を復元
-  const placements: Placement[] = [];
+  if (options.onProgress) reportProgress();
+  const bestChain = extractBestChain();
+  const placements = bestChain.map((c) => c.mv);
+  const attack = bestChain.reduce((a, c) => a + c.attack, 0);
   const boardHashes: string[] = [rootBoard.hash()];
-  let attack = 0;
-  let cur = rootNode;
-  while (cur.children !== null && cur.children.length > 0) {
-    let best = cur.children[0];
-    for (const c of cur.children) {
-      if (c.cachedEval > best.cachedEval) best = c;
-    }
-    placements.push(best.mv);
-    attack += best.attack;
-    boardHashes.push(best.node.state.board.hash());
-    cur = best.node;
-    if (placements.length >= options.depth) break;
+  for (const c of bestChain) {
+    boardHashes.push(c.node.state.board.hash());
   }
 
   return { placements, attack, boardHashes, nodes: nodeCount };
 
   // ---- 内部関数 ----
+
+  /** 現在の根からの最善チェーンを抽出して報告 */
+  function reportProgress(): void {
+    const chain = extractBestChain();
+    let atk = 0;
+    for (const c of chain) atk += c.attack;
+    let deepest = 0;
+    for (const layer of layers) {
+      if (layer.size > 0) deepest++;
+    }
+    options.onProgress!({
+      placements: chain.map((c) => c.mv),
+      attack: atk,
+      nodes: nodeCount,
+      depth: deepest,
+    });
+  }
+
+  function extractBestChain(): DagEdge[] {
+    const chain: DagEdge[] = [];
+    let cur: DagNode = rootNode;
+    while (cur.children !== null && cur.children.length > 0 && chain.length < options.depth) {
+      let bestEdge = cur.children[0];
+      for (const c of cur.children) {
+        if (c.cachedEval > bestEdge.cachedEval) bestEdge = c;
+      }
+      chain.push(bestEdge);
+      cur = bestEdge.node;
+    }
+    return chain;
+  }
 
   function makeChildNode(
     layer: Map<string, DagNode>,
