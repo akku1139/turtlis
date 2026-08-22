@@ -66,8 +66,8 @@ export const DEFAULT_HEURISTIC_WEIGHTS = {
   heightUpperQuarter: -3.0,
   deadHeight: 20,
   deadPenalty: -60,
-  /** クアッド用ウェルの深さ（1段ごと）*/
-  tetrisWellDepth: 0.6,
+  /** ウェル深度（スピン主体のため控えめ。ダウンスタック/フォールバック用）*/
+  tetrisWellDepth: 0.3,
   /** ウェル総量（複数ウェル抑止）*/
   wellSum: 0,
   /** 消去進行度（9割方埋まった行が多いほど良い）*/
@@ -77,7 +77,7 @@ export const DEFAULT_HEURISTIC_WEIGHTS = {
   /** B2B 状態維持 */
   hasBackToBack: 0.8,
   /** Tスロット潜在力 */
-  tSlot: 0.3,
+  tSlot: 0.9,
   /**
    * クアッド用ウェル以外の競合ウェルペナルティ。
    * ※検証の結果、静的ペナルティは過渡期地形への過剰な制約となりAPMが大幅低下

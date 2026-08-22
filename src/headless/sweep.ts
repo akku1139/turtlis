@@ -15,11 +15,22 @@ interface Config {
 }
 
 const configs: Config[] = [
-  { name: 'all-on', reward: {}, heuristic: {} },
-  { name: 'no-bump', reward: {}, heuristic: { bumpinessNoWell: 0 } },
-  { name: 'no-extra-well', reward: {}, heuristic: { extraOpenWell: 0 } },
-  { name: 'parity-only', reward: {}, heuristic: { bumpinessNoWell: 0, extraOpenWell: 0 } },
-  { name: 'gentle', reward: {}, heuristic: { bumpinessNoWell: -0.12, extraOpenWell: -0.6 } },
+  { name: 'quad-base', reward: {}, heuristic: {} },
+  {
+    name: 'sc-mild',
+    reward: { normalClears: [0, -2.0, -2.5, -2.0, 4.0], spinClears: [0, 2.5, 6.0, 8.0], miniSpinClears: [0, 1.0, 2.5], nonTSpinClears: [0, 3.0, 5.0], b2bClear: 2.5, combo: 1.8, wastedT: -1.0, attack: 0, perfectClear: 12 },
+    heuristic: { tetrisWellDepth: 0.3, tSlot: 0.9 },
+  },
+  {
+    name: 'sc-slot',
+    reward: { normalClears: [0, -2.0, -2.5, -2.0, 4.0], spinClears: [0, 2.5, 6.0, 8.0], miniSpinClears: [0, 1.0, 2.5], nonTSpinClears: [0, 3.0, 5.0], b2bClear: 2.5, combo: 1.8, wastedT: -1.0, attack: 0, perfectClear: 12 },
+    heuristic: { tetrisWellDepth: 0.3, tSlot: 2.0, narrowHole: 0.4 },
+  },
+  {
+    name: 'sc-slot2',
+    reward: { normalClears: [0, -2.0, -2.5, -2.0, 4.0], spinClears: [0, 2.5, 6.0, 8.0], miniSpinClears: [0, 1.0, 2.5], nonTSpinClears: [0, 3.0, 5.0], b2bClear: 2.5, combo: 1.8, wastedT: -1.0, attack: 0, perfectClear: 12 },
+    heuristic: { tetrisWellDepth: 0.3, tSlot: 3.0, narrowHole: 0.8 },
+  },
 ];
 
 interface Result { apm: number; pps: number; pieces: number; attack: number; app: number; spins: number; b2b: number }

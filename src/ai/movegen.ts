@@ -164,12 +164,16 @@ export function generatePlacements(board: BitBoard, piece: MinoType): Placement[
   };
 
   if (fastMode) {
-    // すべての (rot, x) について着地させ、そこから移動/回転を展開
+    // すべての (rot, x) について着地させ、そこから移動/回転を展開。
+    // 下降途中の全 y も work に入れる（ポケット深さで一時停止してから
+    // 回転で差し込む = TSD 等の生成に必要）
     for (let rot = 0; rot < 4; rot++) {
       for (let x = CM_X_MIN; x < CM_X_MIN + CM_X_COUNT; x++) {
         if (cm.obstructed(rot, x, spawnTop)) continue;
         const ly = dropFrom(rot, x, spawnTop);
-        pushWork(rot, x, ly, false);
+        for (let y = ly; y >= spawnTop; y--) {
+          pushWork(rot, x, y, false);
+        }
         addPlacement(rot, x, ly, false, 0);
       }
     }
