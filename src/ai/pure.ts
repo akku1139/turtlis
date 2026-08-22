@@ -175,6 +175,8 @@ export function detectOtherSpin(board: BitBoard, p: Placement): boolean {
   );
 }
 
+export type SpinKind = 'none' | 't-mini' | 't-full' | 'other';
+
 export interface LockResult {
   cleared: number;
   isAllClear: boolean;
@@ -183,6 +185,8 @@ export interface LockResult {
   newComboCount: number;
   newDifficultClearCount: number;
   isSpinAction: boolean;
+  /** スピン種別（B2B戦略の報酬設計用） */
+  spinKind: SpinKind;
 }
 
 export function simulateLock(
@@ -202,6 +206,9 @@ export function simulateLock(
 
   const isSpinAction = tSpin.isSpin || otherSpin;
   const isQuad = cleared === 4;
+  const spinKind: SpinKind = tSpin.isSpin
+    ? (tSpin.isMini ? 't-mini' : 't-full')
+    : (otherSpin ? 'other' : 'none');
 
   let scoreGained = 0;
   let baseAttack = 0;
@@ -287,6 +294,7 @@ export function simulateLock(
       newComboCount,
       newDifficultClearCount,
       isSpinAction,
+      spinKind,
     },
     nextBoard,
   };

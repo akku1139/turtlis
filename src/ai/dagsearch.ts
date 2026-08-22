@@ -29,6 +29,11 @@ export interface DagSearchOptions {
   timeLimitMs: number;
   /** 消去を伴わない穴増加手を禁止する */
   pruneHoles: boolean;
+  /**
+   * 前回計画での盤面ハッシュ列（index=手数）。
+   * 一致する子に小さなボーナスを与え、計画の一貫性（振り子現象）を抑える。
+   */
+  preferredBoardHashes?: string[];
 }
 
 export interface DagSearchResult {
@@ -298,7 +303,11 @@ export function dagSearch(
           if (nh > parentHolesTotal + 2) continue;
         }
 
-        const reward = rewardOf(mv.piece, outcome.result, outcome.result.totalAttack);
+        let reward = rewardOf(mv.piece, outcome.result, outcome.result.totalAttack);
+        // 前回計画との一致ボーナス（同じ系統の積みを継続させる）
+        if (options.preferredBoardHashes && outcome.state.board.hash() === options.preferredBoardHashes[node.depth + 1]) {
+          reward += 0.6;
+        }
         const key = nodeKey(outcome.state);
         const childNode = makeChildNode(nextLayer, key, outcome.state, node.depth + 1);
         childNode.parents!.push(node);

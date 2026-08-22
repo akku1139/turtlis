@@ -16,54 +16,32 @@ interface Config {
 
 const configs: Config[] = [
   {
-    name: 'qr',
-    reward: {       normalClears: [0, -2.0, -1.5, -1.0, 5.0],
-      spinClears: [0, 1.5, 4.5, 6.5],
-      b2bClear: 1.5,
-      combo: 1.8,
-      wastedT: -1.5,
-      attack: 0,
-      perfectClear: 12, },
-    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0 },
+    name: 'nh0.0',
+    reward: { normalClears: [0, -2.0, -2.5, -2.0, 5.0], b2bClear: 1.5, combo: 1.8, wastedT: -1.5, attack: 0, perfectClear: 12 },
+    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0, narrowHole: 0 },
   },
   {
-    name: 'qr-plus',
-    reward: { normalClears: [0, -2.0, -1.5, -1.0, 7.0], spinClears: [0, 1.5, 4.5, 6.5], b2bClear: 2.5, combo: 1.8, wastedT: -1.5, attack: 0, perfectClear: 12 },
-    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0 },
+    name: 'nh0.3',
+    reward: { normalClears: [0, -2.0, -2.5, -2.0, 5.0], b2bClear: 1.5, combo: 1.8, wastedT: -1.5, attack: 0, perfectClear: 12 },
+    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0, narrowHole: 0.3 },
   },
   {
-    name: 'qr-no-dbl',
-    reward: { normalClears: [0, -2.0, -2.5, -2.0, 5.0], spinClears: [0, 1.5, 4.5, 6.5], b2bClear: 1.5, combo: 1.8, wastedT: -1.5, attack: 0, perfectClear: 12 },
-    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0 },
+    name: 'nh0.8',
+    reward: { normalClears: [0, -2.0, -2.5, -2.0, 5.0], b2bClear: 1.5, combo: 1.8, wastedT: -1.5, attack: 0, perfectClear: 12 },
+    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0, narrowHole: 0.8 },
   },
   {
-    name: 'qr-well10',
-    reward: {       normalClears: [0, -2.0, -1.5, -1.0, 5.0],
-      spinClears: [0, 1.5, 4.5, 6.5],
-      b2bClear: 1.5,
-      combo: 1.8,
-      wastedT: -1.5,
-      attack: 0,
-      perfectClear: 12, },
-    heuristic: { tetrisWellDepth: 1.0, wellSum: 0, clearProgress: 0, nearFull: 0 },
-  },
-  {
-    name: 'qr-tss-low',
-    reward: { normalClears: [0, -2.0, -1.5, -1.0, 5.0], spinClears: [0, 0.3, 4.5, 6.5], b2bClear: 2.0, combo: 1.8, wastedT: -1.0, attack: 0, perfectClear: 12 },
-    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0 },
-  },
-  {
-    name: 'qr-combo25',
-    reward: { normalClears: [0, -2.0, -1.5, -1.0, 5.0], spinClears: [0, 1.5, 4.5, 6.5], b2bClear: 1.5, combo: 2.5, wastedT: -1.5, attack: 0, perfectClear: 12 },
-    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0 },
+    name: 'nh1.5',
+    reward: { normalClears: [0, -2.0, -2.5, -2.0, 5.0], b2bClear: 1.5, combo: 1.8, wastedT: -1.5, attack: 0, perfectClear: 12 },
+    heuristic: { tetrisWellDepth: 0.6, wellSum: 0, clearProgress: 0, nearFull: 0, narrowHole: 1.5 },
   },
 ];
 
-interface Result { apm: number; pps: number; pieces: number; attack: number }
+interface Result { apm: number; pps: number; pieces: number; attack: number; spins: number; b2b: number }
 
 function runConfig(cfg: Config, seeds: number[], pieces: number, timeMs: number, depth: number): Result {
   setWeights({ ...DEFAULT_REWARD_WEIGHTS, ...cfg.reward }, { ...DEFAULT_HEURISTIC_WEIGHTS, ...cfg.heuristic });
-  let apm = 0, pps = 0, pcs = 0, atk = 0;
+  let apm = 0, pps = 0, pcs = 0, atk = 0, spins = 0, b2b = 0;
   for (const seed of seeds) {
     const r = runHeadlessGame(
       {
@@ -83,8 +61,13 @@ function runConfig(cfg: Config, seeds: number[], pieces: number, timeMs: number,
     pps += r.pps;
     pcs += r.pieces;
     atk += r.attack;
+    b2b += r.b2bMax;
+    for (const [k, v] of Object.entries(r.clearCounts)) {
+      if (k.includes('SPIN') && k !== 'MINI T-SPIN ZERO' && !k.startsWith('MINI T-')) spins += v;
+      if (!k.includes('T-SPIN') && k.includes('SPIN')) spins += 0; // 重複防止
+    }
   }
-  return { apm: apm / seeds.length, pps: pps / seeds.length, pieces: pcs / seeds.length, attack: atk / seeds.length };
+  return { apm: apm / seeds.length, pps: pps / seeds.length, pieces: pcs / seeds.length, attack: atk / seeds.length, spins: spins / seeds.length, b2b: b2b / seeds.length };
 }
 
 function main() {
@@ -108,7 +91,7 @@ function main() {
   for (const cfg of configs) {
     const r = runConfig(cfg, seeds, pieces, timeMs, depth);
     results.push({ name: cfg.name, r });
-    console.log(`${cfg.name.padEnd(14)} APM=${r.apm.toFixed(1).padStart(6)} atk=${r.attack.toFixed(1).padStart(6)} pieces=${r.pieces.toFixed(0)} pps=${r.pps.toFixed(2)}`);
+    console.log(`${cfg.name.padEnd(14)} APM=${r.apm.toFixed(1).padStart(6)} atk=${r.attack.toFixed(1).padStart(6)} nonTspin=${r.spins.toFixed(1)} b2b=${r.b2b.toFixed(1)} pieces=${r.pieces.toFixed(0)}`);
   }
   console.log('\n--- ranking ---');
   for (const { name, r } of [...results].sort((a, b) => b.r.apm - a.r.apm)) {

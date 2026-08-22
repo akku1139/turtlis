@@ -1,70 +1,37 @@
 /// <reference lib="webworker" />
 
-import { beamSearch } from './beamsearch';
+import { dagSearch } from './dagsearch';
 import { BitBoard } from './bitboard';
-import type { SearchState } from './types';
-import { getMatrix } from './pure';
 
 self.onmessage = (e: MessageEvent) => {
   const data = e.data;
   if (data.type === 'search') {
     const searchId = data.searchId;
     const searchKey = data.searchKey;
-    const state: SearchState = {
-      board: BitBoard.fromGrid(data.boardGrid),
-      current: data.current,
-      bag: data.bag,
-      hold: data.hold,
-      canHold: data.canHold,
-      comboCount: data.comboCount,
-      difficultClearCount: data.difficultClearCount,
-      accumulatedAttack: 0,
-      accumulatedScore: 0,
-      placements: [],
-      lastSpinAction: false,
-      lastCleared: 0,
-    };
 
     try {
-      const best = beamSearch(
-        state,
-        data.beamWidth ?? 80,
-        data.maxDepth,
-        (progress) => {
-          (self as unknown as DedicatedWorkerGlobalScope).postMessage({
-            type: 'progress',
-            searchId,
-            searchKey,
-            depth: progress.depth,
-            totalDepth: progress.totalDepth,
-            candidates: progress.candidates,
-            bestAttack: progress.bestState.accumulatedAttack,
-            placements: progress.bestState.placements.map((p) => ({
-              piece: p.piece,
-              rotation: p.rotation,
-              x: p.x,
-              y: p.y,
-              lastActionWasRotation: p.lastActionWasRotation,
-              lastKickIndex: p.lastKickIndex,
-            })),
-          });
+      const board = BitBoard.fromGrid(data.boardGrid);
+      const result = dagSearch(
+        board,
+        data.current,
+        data.bag,
+        data.hold,
+        data.canHold,
+        data.comboCount,
+        data.difficultClearCount,
+        {
+          depth: data.maxDepth ?? 8,
+          nodeBudget: data.nodeBudget ?? (data.beamWidth ?? 80) * 200,
+          timeLimitMs: data.timeLimitMs ?? 2500,
+          pruneHoles: false,
+          preferredBoardHashes: undefined,
         },
-        data.warmStartPlacements,
-        data.timeLimitMs,
-        data.planBoardHashes,
       );
 
-      const boardHashes: string[] = [];
-      const simBoard = BitBoard.fromGrid(data.boardGrid);
-      boardHashes.push(simBoard.hash().toString());
-      for (const p of best.placements) {
-        const matrix = getMatrix(p.piece, p.rotation);
-        simBoard.merge(matrix, p.x, p.y);
-        simBoard.clearLines();
-        boardHashes.push(simBoard.hash().toString());
-      }
+      // 盤面ハッシュ列（計画の各段階の盤面）
+      const boardHashes: string[] = result.boardHashes;
 
-      const placements = best.placements.map((p) => ({
+      const placements = result.placements.map((p) => ({
         piece: p.piece,
         x: p.x,
         y: p.y,
@@ -78,8 +45,9 @@ self.onmessage = (e: MessageEvent) => {
         searchId,
         searchKey,
         placements,
-        attack: best.accumulatedAttack,
+        attack: result.attack,
         boardHashes,
+        nodes: result.nodes,
       });
     } catch (err) {
       (self as unknown as DedicatedWorkerGlobalScope).postMessage({

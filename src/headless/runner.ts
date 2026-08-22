@@ -8,6 +8,7 @@ import { getMatrix } from '../ai/pure.ts';
 export type SearchEngine = 'dag' | 'beam';
 
 export interface HeadlessOptions {
+  preferredBoardHashes?: string[];
   pps: number;
   beamWidth: number;
   maxDepth: number;
@@ -37,6 +38,8 @@ export interface GameResult {
   pps: number;
   b2bMax: number;
   comboMax: number;
+  /** 消去種別ごとの回数 */
+  clearCounts: Record<string, number>;
 }
 
 export function mulberry32(seed: number): () => number {
@@ -84,6 +87,23 @@ export function runHeadlessGame(options: HeadlessOptions, seed: number): GameRes
   core.config.preventAccident = false;
 
   const frameMs = 1000 / options.pps;
+  const clearCounts: Record<string, number> = {};
+  let b2bMaxChain = 0;
+  let comboMaxChain = 0;
+  // actionMessage は update() を介さないと消えないため、行数デルタで消去を検出する
+  let lastLines = core.lines;
+  const origLock = core.lockPiece.bind(core);
+  core.lockPiece = function() {
+    origLock();
+    const d = core.lines - lastLines;
+    lastLines = core.lines;
+    if (d > 0 && core.actionMessage) {
+      const key = core.actionMessage.split('\n')[0].split(' LEVEL UP')[0].trim();
+      clearCounts[key] = (clearCounts[key] || 0) + 1;
+    }
+    if (core.difficultClearCount > 1) b2bMaxChain = Math.max(b2bMaxChain, core.difficultClearCount - 1);
+    if (core.comboCount > 1) comboMaxChain = Math.max(comboMaxChain, core.comboCount - 1);
+  } as any;
 
   while (core.state === 'PLAYING' && core.piecesPlaced < options.maxPieces) {
     let plan: Placement[] = [];
@@ -149,7 +169,8 @@ export function runHeadlessGame(options: HeadlessOptions, seed: number): GameRes
     playTimeSec: core.playTime,
     apm: (core.totalAttackSent / Math.max(core.playTime, 1 / 60)) * 60,
     pps: core.piecesPlaced / Math.max(core.playTime, 1 / 60),
-    b2bMax: Math.max(0, core.difficultClearCount - 1),
-    comboMax: Math.max(0, core.comboCount - 1),
+    b2bMax: b2bMaxChain,
+    comboMax: comboMaxChain,
+    clearCounts,
   };
 }

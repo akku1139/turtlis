@@ -12,28 +12,37 @@ import type { LockResult } from './pure.ts';
 
 // ---- 報酬（即時利得: 1手ごと）----
 export const DEFAULT_REWARD_WEIGHTS = {
-  /** 通常消去 [0列..4列] */
-  normalClears: [0, -1.5, -1.0, -0.5, 4.0],
-  /** フルスピン消去 [0列..3列] */
-  spinClears: [0.5, 2.0, 4.0, 6.0],
-  /** ミニスピン消去 [0列..2列] */
+  /** 通常消去 [0列..4列]（クアッド以外は抑止） */
+  normalClears: [0, -2.0, -2.5, -2.0, 5.0],
+  /** Tフルスピン消去 [0列..3列] */
+  spinClears: [0, 1.5, 4.5, 6.5],
+  /** Tミニスピン消去 [0列..2列] */
   miniSpinClears: [0, 0.5, 1.5],
+  /**
+   * 非Tスピン（immobile spin）消去 [0列..2列]。
+   * B2Bを維持したまま安価に消せるため、機会があれば優先的に選ぶ。
+   */
+  nonTSpinClears: [0, 2.5, 4.0],
+  /** 非TスピンでB2Bが継続した場合の追加ボーナス */
+  nonTSpinB2B: 1.5,
   /** B2Bが継続した消去 */
-  b2bClear: 1.0,
+  b2bClear: 1.5,
   /** Perfect Clear */
-  perfectClear: 6.0,
+  perfectClear: 12.0,
   /** コンボ係数: reward += w * floor((combo-1)/2) */
-  combo: 1.2,
+  combo: 1.8,
   /** Tミノを使ったのにスピンが絡まない場合のペナルティ */
-  wastedT: -1.2,
+  wastedT: -1.5,
   /** 実攻撃値への係数 */
-  attack: 1.0,
+  attack: 0,
 };
 
 
 // ---- ヒューリスティック（盤面の静的評価）----
 export const DEFAULT_HEURISTIC_WEIGHTS = {
-  holes: -1.5,
+  holes: -1.5, // 幅2以上の穴
+  /** 幅1の穴（スピン余地になり得るが基本的には障害）*/
+  narrowHole: -0.2,
   coverPerCell: -0.2,
   maxCoverDepth: 6,
   rowTransitions: -0.15,
@@ -45,13 +54,13 @@ export const DEFAULT_HEURISTIC_WEIGHTS = {
   deadHeight: 20,
   deadPenalty: -60,
   /** クアッド用ウェルの深さ（1段ごと）*/
-  tetrisWellDepth: 0.5,
+  tetrisWellDepth: 0.6,
   /** ウェル総量（複数ウェル抑止）*/
-  wellSum: -0.05,
+  wellSum: 0,
   /** 消去進行度（9割方埋まった行が多いほど良い）*/
-  clearProgress: 0.4,
+  clearProgress: 0,
   /** あと1マスの行 */
-  nearFull: 0.5,
+  nearFull: 0,
   /** B2B 状態維持 */
   hasBackToBack: 0.8,
   /** Tスロット潜在力 */
@@ -80,6 +89,10 @@ export interface BoardFeatures {
   tetrisWellDepth: number;
   tetrisWellColumn: number;
   nearFullRows: number;
+  /** 幅1の穴（左右が埋まり＝将来スピンで消せる余地）*/
+  narrowHoles: number;
+  /** 幅2以上の穴（純粋に悪い）*/
+  wideHoles: number;
   /** 消去進行度: Σ max(0, 埋まり数-7) （クアッド/PC接近の指標）*/
   clearProgress: number;
   tSlots: number;
@@ -178,11 +191,33 @@ export function computeFeatures(board: BitBoard): BoardFeatures {
     rowWords[i] = rowWord;
   }
 
+  const colTop: number[] = new Array(BOARD_WIDTH);
+  for (let x = 0; x < BOARD_WIDTH; x++) colTop[x] = BOARD_TOTAL_HEIGHT - heights[x];
+
+  let narrowHoles = 0;
+  let wideHoles = 0;
   for (let i = 0; i < rowCount; i++) {
+    const y = minTopY + i;
     const rowWord = rowWords[i];
     const filledCount = popcount32(rowWord);
     if (filledCount === BOARD_WIDTH - 1) nearFullRows++;
     if (filledCount >= 8) clearProgress += filledCount - 7;
+
+    // 穴の分類: 幅1（左右埋まり）は将来の immobile spin で消せる可能性がある
+    {
+      let w = ~rowWord & ((1 << BOARD_WIDTH) - 1);
+      while (w) {
+        const b = w & -w;
+        const x = 31 - Math.clz32(b);
+        if (y > colTop[x]) {
+          const left = x === 0 ? true : (rowWord & (1 << (x - 1))) !== 0;
+          const right = x === BOARD_WIDTH - 1 ? true : (rowWord & (1 << (x + 1))) !== 0;
+          if (left && right) narrowHoles++;
+          else wideHoles++;
+        }
+        w ^= b;
+      }
+    }
 
     // 行内遷移（左右壁を埋まり扱い）
     let rt = 0;
@@ -286,6 +321,8 @@ export function computeFeatures(board: BitBoard): BoardFeatures {
     tetrisWellColumn: wellColumn,
     nearFullRows,
     clearProgress,
+    narrowHoles,
+    wideHoles,
     tSlots,
   };
 
@@ -306,7 +343,8 @@ export function heuristicOf(board: BitBoard, difficultClearCount: number): numbe
   const f = computeFeatures(board);
   const W = HEURISTIC_WEIGHTS;
   let h = 0;
-  h += f.holes * W.holes;
+  h += f.wideHoles * W.holes;
+  h += f.narrowHoles * W.narrowHole;
   h += f.cover * W.coverPerCell;
   h += f.rowTransitions * W.rowTransitions;
   h += f.maxHeight * W.height;
@@ -372,10 +410,16 @@ export function rewardOf(
     r += W.perfectClear;
   }
   const cleared = result.cleared;
-  if (result.isSpinAction) {
-    // スピンAction: mini判定はLockResultでは区別しないので簡易にフルスピン扱い
-    // （miniはattack値が小さいためattack項で差がつく）
+  if (result.spinKind === 't-full') {
     r += W.spinClears[Math.min(cleared, 3)];
+  } else if (result.spinKind === 't-mini') {
+    r += W.miniSpinClears[Math.min(cleared, 2)];
+  } else if (result.spinKind === 'other') {
+    // 非T immobileスピン: B2B維持用の安価な消しとして積極評価
+    r += W.nonTSpinClears[Math.min(cleared, 2)];
+    if (cleared > 0 && result.newDifficultClearCount > 1) {
+      r += W.nonTSpinB2B;
+    }
   } else {
     r += W.normalClears[Math.min(cleared, 4)];
   }
