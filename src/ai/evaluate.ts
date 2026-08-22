@@ -56,6 +56,11 @@ export const DEFAULT_HEURISTIC_WEIGHTS = {
   holes: -1.5, // 幅2以上の穴
   /** 幅1の穴（スピン余地になり得るが基本的には障害）*/
   narrowHole: -0.2,
+  /**
+   * スピンポケット（左右+下が埋まった1幅の窪み）。
+   * 任意ミノのimmobileスピンですぐ消せる場所。作りに行く軽いボーナス。
+   */
+  spinPocket: 0,
   coverPerCell: -0.2,
   maxCoverDepth: 6,
   rowTransitions: -0.15,
@@ -126,6 +131,8 @@ export interface BoardFeatures {
   bumpinessNoWell: number;
   /** チェッカーボード不均衡（絶対値）*/
   parity: number;
+  /** 左右+下が埋まった1幅の窪み（immobileスピン即席地点）*/
+  spinPockets: number;
   tSlots: number;
 }
 
@@ -227,6 +234,7 @@ export function computeFeatures(board: BitBoard): BoardFeatures {
 
   let narrowHoles = 0;
   let wideHoles = 0;
+  let spinPockets = 0;
   for (let i = 0; i < rowCount; i++) {
     const y = minTopY + i;
     const rowWord = rowWords[i];
@@ -234,17 +242,24 @@ export function computeFeatures(board: BitBoard): BoardFeatures {
     if (filledCount === BOARD_WIDTH - 1) nearFullRows++;
     if (filledCount >= 8) clearProgress += filledCount - 7;
 
-    // 穴の分類: 幅1（左右埋まり）は将来の immobile spin で消せる可能性がある
+    // 穴の分類: 幅1（左右埋まり）は将来の immobile spin で消せる可能性がある。
+    // 床（下の行）があるものは即席スピンポケットとして区別。
     {
       let w = ~rowWord & ((1 << BOARD_WIDTH) - 1);
+      const belowWord = i + 1 < rowCount ? rowWords[i + 1] : -1; // 最終行の下は床
       while (w) {
         const b = w & -w;
         const x = 31 - Math.clz32(b);
         if (y > colTop[x]) {
           const left = x === 0 ? true : (rowWord & (1 << (x - 1))) !== 0;
           const right = x === BOARD_WIDTH - 1 ? true : (rowWord & (1 << (x + 1))) !== 0;
-          if (left && right) narrowHoles++;
-          else wideHoles++;
+          const floorBelow = (belowWord & b) !== 0 || i + 1 >= rowCount;
+          if (left && right) {
+            if (floorBelow) spinPockets++;
+            else narrowHoles++;
+          } else {
+            wideHoles++;
+          }
         }
         w ^= b;
       }
@@ -388,6 +403,7 @@ export function computeFeatures(board: BitBoard): BoardFeatures {
     openWells,
     bumpinessNoWell,
     parity: parityAbs,
+    spinPockets,
     tSlots,
   };
 
@@ -436,6 +452,7 @@ export function heuristicOf(
   }
   h += f.bumpinessNoWell * W.bumpinessNoWell;
   h += f.parity * W.parity;
+  h += f.spinPockets * W.spinPocket;
   h += f.clearProgress * W.clearProgress;
   h += f.nearFullRows * W.nearFull;
   h += f.tSlots * W.tSlot;
