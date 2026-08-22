@@ -3,8 +3,6 @@ import { InputManager } from './inputmanager.ts';
 import { Renderer } from './renderer.ts';
 import { getMatrix } from './ai/pure.ts';
 import type { MinoType, MinoState } from './types.ts';
-import { BitBoard } from './ai/bitboard.ts';
-import { TemplateStock } from './ai/templatestock.ts';
 
 export class GameManager {
   core: GameCore;
@@ -20,17 +18,7 @@ export class GameManager {
   aiSearchId: number = 0;
   lastSearchKey: string = '';
 
-  private templateStock = new TemplateStock();
-  private aiWarmStartPlacements: Array<{
-    piece: MinoType;
-    rotation: MinoState;
-    x: number;
-    y: number;
-    lastActionWasRotation?: boolean;
-    lastKickIndex?: number;
-  }> = [];
   private lastProcessedPiecesPlaced = -1;
-  private aiPlanBoardHashes: string[] = [];
   private aiPlacementQueue: Array<{
     piece: MinoType;
     rotation: MinoState;
@@ -157,13 +145,11 @@ export class GameManager {
       const statusOverlay = document.getElementById('aiStatusOverlay');
       const statusText = document.getElementById('aiStatusText');
       const statusDetail = document.getElementById('aiStatusDetail');
-      const stockCount = document.getElementById('aiStockCount');
 
       if (statusOverlay) statusOverlay.classList.toggle('hidden', !this.aiEnabled);
 
       if (this.aiEnabled) {
         if (statusText) statusText.textContent = this.aiAutoEnabled ? 'AI AUTO' : 'AI ON';
-        if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
         if (changed) {
           this.restartSearch();
         } else {
@@ -173,11 +159,9 @@ export class GameManager {
         if (output) output.textContent = '';
         if (statusText) statusText.textContent = 'AI OFF';
         if (statusDetail) statusDetail.textContent = '';
-        if (stockCount) stockCount.textContent = '';
         this.aiGhostSequence = [];
         this.renderer.setAIGhostSequence([]);
         this.aiPlacementQueue = [];
-        this.aiWarmStartPlacements = [];
         this.restartSearch(); // Ensure worker stopped
       }
     };
@@ -200,9 +184,7 @@ export class GameManager {
     this.lastSearchKey = '';
     this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
     this.aiPlacementQueue = [];       // ★ キューをクリア
-    this.aiWarmStartPlacements = [];
     this.aiGhostSequence = [];
-    this.aiPlanBoardHashes = [];
     this.renderer.setAIGhostSequence([]);
     if (this.aiEnabled) {
       this.triggerSearchIfNeeded();
@@ -231,49 +213,14 @@ export class GameManager {
     if (this.aiPlacementQueue.length > 0) return; // ★ キューが残っていれば探索しない
     this.lastSearchKey = key;
 
-    const board = BitBoard.fromGrid(this.core.board.grid);
-    const stockResult = this.templateStock.query(
-      board,
-      this.core.currentMino.type,
-      this.core.nextQueue,
-      this.core.holdType,
-    );
-
-    if (stockResult && stockResult.placements.length > 0) {
-      this.aiGhostSequence = stockResult.placements;
-      this.aiWarmStartPlacements = stockResult.placements.slice(1);
-      this.renderer.setAIGhostSequence(this.aiGhostSequence);
-
-      if (this.aiAutoEnabled) {
-        // 自動操作時はテンプレートの手順をすべてキューに入れる
-        this.aiPlacementQueue = [...this.aiGhostSequence];
-      }
-      return;
-    }
-
-    // 近似テンプレートがあれば、その配置列を warm start として利用する
-    if (this.aiWarmStartPlacements.length === 0) {
-      const approximate = this.templateStock.getBestApproximate(
-        board,
-        this.core.currentMino.type,
-        this.core.nextQueue,
-        this.core.holdType,
-      );
-      if (approximate && approximate.placements.length > 1) {
-        this.aiWarmStartPlacements = approximate.placements.slice(0, 2);
-      }
-    }
-
     if (this.aiBusy) return;
     this.aiBusy = true;
 
     const output = document.getElementById('aiOutput');
     const statusDetail = document.getElementById('aiStatusDetail');
     const statusText = document.getElementById('aiStatusText');
-    const stockCount = document.getElementById('aiStockCount');
 
     if (statusText) statusText.textContent = this.aiAutoEnabled ? 'AI AUTO' : 'AI ON';
-    if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
     const totalDepthGuess = this.core.nextQueue.length + 1;
     if (output) output.textContent = `Searching... 0/${totalDepthGuess}`;
     if (statusDetail) statusDetail.textContent = `Depth 0/${totalDepthGuess}`;
@@ -298,7 +245,6 @@ export class GameManager {
           if (output) output.textContent = JSON.stringify(data.placements, null, 2);
           if (statusDetail) statusDetail.textContent = 'Finished';
           if (statusText) statusText.textContent = this.aiAutoEnabled ? 'AI AUTO' : 'AI ON';
-          if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
 
           if (data.placements && data.placements.length > 0) {
             this.aiGhostSequence = data.placements.map(
@@ -311,18 +257,6 @@ export class GameManager {
                 lastKickIndex: p.lastKickIndex,
               }),
             );
-            this.aiWarmStartPlacements = this.aiGhostSequence.slice(1);
-            this.aiPlanBoardHashes = data.boardHashes ?? [];
-
-            this.templateStock.store(
-              BitBoard.fromGrid(this.core.board.grid),
-              this.core.currentMino.type,
-              this.core.nextQueue.slice(),
-              this.core.holdType,
-              data.placements,
-              data.attack ?? 0,
-            );
-            if (stockCount) stockCount.textContent = `Stock: ${this.templateStock.size}`;
 
             if (this.aiAutoEnabled) {
               // ★ キューに全手をセット
@@ -330,7 +264,6 @@ export class GameManager {
             }
           } else {
             this.aiGhostSequence = [];
-            this.aiWarmStartPlacements = [];
             this.aiPlacementQueue = [];
           }
           this.renderer.setAIGhostSequence(this.aiGhostSequence);
@@ -341,7 +274,7 @@ export class GameManager {
         if (output)
           output.textContent = `Searching... ${data.depth}/${data.totalDepth} (candidates: ${data.candidates}, best ATK: ${data.bestAttack ?? 0})`;
         if (statusDetail)
-          statusDetail.textContent = `Depth ${data.depth}/${data.totalDepth} | Candidates: ${data.candidates} | Best ATK: ${data.bestAttack ?? 0} | Stock: ${this.templateStock.size}`;
+          statusDetail.textContent = `Depth ${data.depth}/${data.totalDepth} | Candidates: ${data.candidates} | Best ATK: ${data.bestAttack ?? 0}`;
 
           if (data.placements) {
             this.aiGhostSequence = data.placements.map(
@@ -394,12 +327,10 @@ export class GameManager {
       comboCount: this.core.comboCount,
       difficultClearCount: this.core.difficultClearCount,
       beamWidth: 100,
+      nodeBudget: 20000,
       maxDepth: 10,
       timeLimitMs: 2500,
-      warmStartPlacements: this.aiWarmStartPlacements,
-      planBoardHashes: this.aiPlanBoardHashes,
     });
-    this.aiWarmStartPlacements = [];
   }
 
   private executeAIPlacement(p: {
@@ -428,7 +359,6 @@ export class GameManager {
     if (this.core.board.collides(matrix, p.x, p.y)) {
       this.aiGhostSequence = [];
       this.renderer.setAIGhostSequence([]);
-      this.aiWarmStartPlacements = [];
       this.aiPlacementQueue = [];
       this.lastSearchKey = '';
       return;
@@ -446,8 +376,6 @@ export class GameManager {
     this.lastProcessedPiecesPlaced = this.core.piecesPlaced;
     this.aiGhostSequence = [];
     this.renderer.setAIGhostSequence([]);
-    this.aiWarmStartPlacements = [];
-    this.aiPlanBoardHashes = [];
     // aiPlacementQueue は shift 済みなのでここでクリアしない
 
     if (this.aiAutoEnabled && !this.aiContinuousEnabled) {
