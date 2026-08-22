@@ -1,17 +1,17 @@
 import type { SearchState, Placement } from './types.ts';
 import { generatePlacements as rawGeneratePlacements } from './movegen.ts';
 import { simulateLock, simulateHold } from './pure.ts';
-import { evaluateState as rawEvaluateState, countHoles } from './evaluate.ts';
-import { getMatrix, spawnX, spawnY } from './pure.ts';
+import { evaluateState, countHoles } from './evaluate.ts';
+import { getMatrix, getPieceCells, spawnX, spawnY } from './pure.ts';
 import type { BitBoard } from './bitboard.ts';
 import type { MinoType } from '../types.ts';
 
-const MAX_CACHE_ENTRIES = 20000;
+const MAX_CACHE_ENTRIES = 30000;
 
 const placementCache = new Map<string, Placement[]>();
 
 function generatePlacements(board: BitBoard, piece: MinoType): Placement[] {
-  const key = `${board.hash().toString()}|${piece}`;
+  const key = `${board.hash()}|${piece}`;
   const cached = placementCache.get(key);
   if (cached) return cached;
 
@@ -24,36 +24,6 @@ function generatePlacements(board: BitBoard, piece: MinoType): Placement[] {
   }
 
   return placements;
-}
-
-const evalCache = new Map<string, number>();
-
-function evaluateState(state: SearchState): number {
-  const key = [
-    state.board.hash().toString(),
-    state.current,
-    state.bag.join(','),
-    state.hold,
-    state.comboCount,
-    state.difficultClearCount,
-    state.accumulatedAttack,
-    state.placements.length, // attackEfficiency で使用するため必要
-    state.lastSpinAction,
-    state.lastCleared,
-  ].join('|');
-
-  const cached = evalCache.get(key);
-  if (cached !== undefined) return cached;
-
-  const value = rawEvaluateState(state);
-  evalCache.set(key, value);
-
-  if (evalCache.size > MAX_CACHE_ENTRIES) {
-    const firstKey = evalCache.keys().next().value;
-    if (firstKey !== undefined) evalCache.delete(firstKey);
-  }
-
-  return value;
 }
 
 function isGoalAllClear(state: SearchState): boolean {
@@ -89,6 +59,9 @@ export function beamSearch(
     }
   }
 
+  const deadline = timeLimitMs ? searchStart + timeLimitMs : Infinity;
+  let timedOut = false;
+
   for (let d = startDepth; d < depth; d++) {
     const candidates: SearchState[] = [];
 
@@ -98,7 +71,12 @@ export function beamSearch(
       for (const p of placements) {
         const nextState = advanceState(state, p);
         if (nextState) candidates.push(nextState);
+        if ((candidates.length & 63) === 0 && Date.now() > deadline) {
+          timedOut = true;
+          break;
+        }
       }
+      if (timedOut) break;
 
       // ホールドしてから配置
       if (state.canHold && (state.hold !== null || state.bag.length > 0)) {
@@ -122,7 +100,12 @@ export function beamSearch(
         for (const p of heldPlacements) {
           const nextState = advanceState(heldState, p);
           if (nextState) candidates.push(nextState);
+          if ((candidates.length & 63) === 0 && Date.now() > deadline) {
+            timedOut = true;
+            break;
+          }
         }
+        if (timedOut) break;
       }
     }
 
@@ -216,10 +199,10 @@ function advanceState(state: SearchState, p: Placement): SearchState | null {
   const nextCurrent = nextBag.shift();
   if (!nextCurrent) return null;
 
-  const nextMatrix = getMatrix(nextCurrent, 0);
+  const nextCells = getPieceCells(nextCurrent, 0);
   const nextSpawnX = spawnX(nextCurrent);
   const nextSpawnY = spawnY(nextCurrent, 0);
-  if (nextBoard.collides(nextMatrix, nextSpawnX, nextSpawnY)) {
+  if (nextBoard.collidesCells(nextCells, nextSpawnX, nextSpawnY)) {
     return null;
   }
 

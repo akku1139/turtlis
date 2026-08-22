@@ -64,6 +64,8 @@ export class GameCore {
   bufferedHold!: boolean;
   bufferedRotation!: MinoRotation | null; // FIXME
 
+  rng: () => number = Math.random;
+
   constructor() {
     this.kickTable = new SRSPlusKickTable();
     this.board = new Board(BOARD_WIDTH, BOARD_TOTAL_HEIGHT);
@@ -138,6 +140,7 @@ export class GameCore {
   }
 
   updateConfigFromUI() {
+    if (typeof document === 'undefined') return; // ヘッドレス環境ではUIから読み取らない
     const arrVal = parseFloat((document.getElementById('cfgARR') as HTMLInputElement).value);
     const dasVal = parseFloat((document.getElementById('cfgDAS') as HTMLInputElement).value);
     const dcdVal = parseFloat((document.getElementById('cfgDCD') as HTMLInputElement).value);
@@ -179,7 +182,7 @@ export class GameCore {
   fillNextQueue() {
     const types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
     for (let i = types.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(this.rng() * (i + 1));
       [types[i], types[j]] = [types[j], types[i]];
     }
     this.nextQueue.push(...types as MinoType[]);

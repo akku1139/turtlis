@@ -2,7 +2,6 @@ import type { MinoType, MinoMatrix } from './types.ts';
 import { BOARD_HIDDEN_HEIGHT, BOARD_TOTAL_HEIGHT, BOARD_VISIBLE_HEIGHT, BOARD_WIDTH, MINOS } from './constants.ts';
 import { Tetromino } from './tetromino.ts';
 import type { GameCore } from './gamecore.ts';
-import type { Placement } from './ai/types.ts';
 import { getMatrix } from './ai/pure.ts';
 
 export class Renderer {

@@ -30,15 +30,14 @@ export class TemplateStock {
   private computeFeatures(board: BitBoard): number[] {
     const heights = new Array(10).fill(0);
     for (let x = 0; x < 10; x++) {
-      let col = board.cols[x];
-      let y = 0;
-      while (col !== 0n && y < BOARD_TOTAL_HEIGHT) {
-        if (col & 1n) {
-          heights[x] = BOARD_TOTAL_HEIGHT - y;
-          break;
-        }
-        col >>= 1n;
-        y++;
+      const lo = board.words[x * 2];
+      const hi = board.words[x * 2 + 1];
+      if (lo !== 0) {
+        heights[x] = BOARD_TOTAL_HEIGHT - (31 - Math.clz32(lo & -lo));
+      } else if (hi !== 0) {
+        heights[x] = BOARD_TOTAL_HEIGHT - (32 + (31 - Math.clz32(hi & -hi)));
+      } else {
+        heights[x] = 0;
       }
     }
     const maxH = Math.max(...heights);
@@ -46,12 +45,17 @@ export class TemplateStock {
     const avgH = heights.reduce((a, b) => a + b, 0) / 10;
     let holes = 0;
     for (let x = 0; x < 10; x++) {
-      let col = board.cols[x];
-      let filled = false;
-      for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
-        if (col & 1n) filled = true;
-        else if (filled) holes++;
-        col >>= 1n;
+      const lo = board.words[x * 2];
+      const hi = board.words[x * 2 + 1];
+      if (lo === 0 && hi === 0) continue;
+      let topY: number;
+      if (lo !== 0) topY = 31 - Math.clz32(lo & -lo);
+      else topY = 32 + (31 - Math.clz32(hi & -hi));
+      let seen = false;
+      for (let y = topY; y < BOARD_TOTAL_HEIGHT; y++) {
+        const filled = y < 32 ? ((lo >>> y) & 1) !== 0 : ((hi >>> (y - 32)) & 1) !== 0;
+        if (filled) seen = true;
+        else if (seen) holes++;
       }
     }
     return [
@@ -81,7 +85,6 @@ export class TemplateStock {
     placements: StockEntry['placements'];
     expectedAttack: number;
   } | null {
-    const features = this.computeFeatures(board);
     const exactKey = `${board.hash()}|${current}|${bag.join(',')}|${hold}`;
     const exact = this.entries.get(exactKey);
     if (exact) {
@@ -93,9 +96,9 @@ export class TemplateStock {
 
   getBestApproximate(
     board: BitBoard,
-    current: MinoType,
-    bag: MinoType[],
-    hold: MinoType | null,
+    _current: MinoType,
+    _bag: MinoType[],
+    _hold: MinoType | null,
   ): StockEntry | null {
     const features = this.computeFeatures(board);
     let best: StockEntry | null = null;

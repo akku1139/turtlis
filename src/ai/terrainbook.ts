@@ -1,5 +1,4 @@
 import type { SearchState } from './types.ts';
-import { computeTerrainScore } from './evaluate.ts';
 
 // オフラインで構築する地形ライブラリの簡易版
 export class TerrainBook {

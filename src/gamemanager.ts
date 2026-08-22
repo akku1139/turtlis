@@ -1,7 +1,6 @@
 import { GameCore } from './gamecore.ts';
 import { InputManager } from './inputmanager.ts';
 import { Renderer } from './renderer.ts';
-import { Tetromino } from './tetromino.ts';
 import { getMatrix } from './ai/pure.ts';
 import type { MinoType, MinoState } from './types.ts';
 import { BitBoard } from './ai/bitboard.ts';

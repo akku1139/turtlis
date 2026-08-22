@@ -41,10 +41,19 @@ export class SRSKickTable implements KickTable {
     "32": [[ 0, 0], [-2, 0], [ 1, 0], [-2,-1], [ 1, 2]],
   };
 
+  private jlCache: (number[][] | undefined)[] = new Array(16);
+  private iCache: (number[][] | undefined)[] = new Array(16);
+
   getKicks(minoType: MinoType, fromState: MinoState, toState: MinoState): number[][] {
+    const idx = fromState * 4 + toState;
+    const cache = minoType === 'I' ? this.iCache : this.jlCache;
+    const cached = cache[idx];
+    if (cached) return cached;
     const key = `${fromState}${toState}`;
     const table = minoType === 'I' ? this.kicksI : this.kicksJLSTZ;
-    return table[key] ?? [[0, 0]];
+    const kicks = table[key] ?? [[0, 0]];
+    cache[idx] = kicks;
+    return kicks;
   }
 }
 

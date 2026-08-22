@@ -1,5 +1,5 @@
 import type { MinoType, MinoState, MinoRotation } from '../types.ts';
-import { MINOS, BOARD_HIDDEN_HEIGHT, BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
+import { BOARD_HIDDEN_HEIGHT, BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
 import { Tetromino } from '../tetromino.ts';
 import { SRSPlusKickTable } from '../kicktable.ts';
 import type { BitBoard } from './bitboard.ts';
@@ -50,6 +50,29 @@ export function spawnY(piece: MinoType, rotation: MinoState): number {
 
 export function getMatrix(piece: MinoType, rotation: MinoState): number[][] {
   return getCachedMatrix(piece, rotation);
+}
+
+// 事前計算済みセルリスト（[dx0,dy0, dx1,dy1, ...]）キャッシュ
+const PIECE_INDEX: Record<MinoType, number> = { I: 0, J: 1, L: 2, O: 3, S: 4, T: 5, Z: 6 };
+const cellsByPieceRot: (Int8Array | undefined)[] = new Array(7 * 4);
+
+export function getPieceCells(piece: MinoType, rotation: MinoState): Int8Array {
+  const idx = PIECE_INDEX[piece] * 4 + rotation;
+  let cached = cellsByPieceRot[idx];
+  if (cached) return cached;
+
+  const matrix = getMatrix(piece, rotation);
+  const list: number[] = [];
+  for (let r = 0; r < matrix.length; r++) {
+    for (let c = 0; c < matrix[r].length; c++) {
+      if (matrix[r][c]) {
+        list.push(c, r);
+      }
+    }
+  }
+  cached = Int8Array.from(list);
+  cellsByPieceRot[idx] = cached;
+  return cached;
 }
 
 export function tryRotate(
@@ -117,11 +140,12 @@ export function detectTSpin(
     }
   }
 
+  const immobilityCells = getPieceCells(p.piece, p.rotation);
   const isImmobile =
-    board.collides(p.matrix, p.x - 1, p.y) &&
-    board.collides(p.matrix, p.x + 1, p.y) &&
-    board.collides(p.matrix, p.x, p.y - 1) &&
-    board.collides(p.matrix, p.x, p.y + 1);
+    board.collidesCells(immobilityCells, p.x - 1, p.y) &&
+    board.collidesCells(immobilityCells, p.x + 1, p.y) &&
+    board.collidesCells(immobilityCells, p.x, p.y - 1) &&
+    board.collidesCells(immobilityCells, p.x, p.y + 1);
 
   if (occupied < 3) {
     if (isImmobile) {
@@ -142,11 +166,12 @@ export function detectOtherSpin(board: BitBoard, p: Placement): boolean {
   if (p.piece === 'T' || p.piece === 'O') return false;
   if (!p.lastActionWasRotation) return false;
 
+  const cells = getPieceCells(p.piece, p.rotation);
   return (
-    board.collides(p.matrix, p.x - 1, p.y) &&
-    board.collides(p.matrix, p.x + 1, p.y) &&
-    board.collides(p.matrix, p.x, p.y - 1) &&
-    board.collides(p.matrix, p.x, p.y + 1)
+    board.collidesCells(cells, p.x - 1, p.y) &&
+    board.collidesCells(cells, p.x + 1, p.y) &&
+    board.collidesCells(cells, p.x, p.y - 1) &&
+    board.collidesCells(cells, p.x, p.y + 1)
   );
 }
 
@@ -171,7 +196,7 @@ export function simulateLock(
   const otherSpin = !tSpin.isSpin ? detectOtherSpin(board, p) : false;
 
   const nextBoard = board.clone();
-  nextBoard.merge(p.matrix, p.x, p.y);
+  nextBoard.mergeCells(getPieceCells(p.piece, p.rotation), p.x, p.y);
   const cleared = nextBoard.clearLines();
   const isAllClear = nextBoard.isEmpty();
 

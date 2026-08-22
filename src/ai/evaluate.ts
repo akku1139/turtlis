@@ -1,343 +1,326 @@
 import type { SearchState, TerrainScore } from './types.ts';
 import { BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
 import type { BitBoard } from './bitboard.ts';
+import { BOARD_LO_BITS } from './bitboard.ts';
 
-const WEIGHTS = {
-  accumulatedAttack: 9,
-  attackEfficiency: 3.5,
-  b2bChain: 10,
-  combo: 2,
-  terrain: 0.5,
-  hazard: 8,
-  spinActionBonus: 16,
-  spinClearBonus: 12,
-  clearBonus: 1.0,
-  b2bBreakPenalty: 40,
-  allClearGoalBonus: 25,
-  allClearBonus: 5,
-  tSlotPotential: 1.2,
+/**
+ * 評価関数の重み。
+ * 攻撃重視（クアッド連携・B2B維持・コンボ）+ 安全な地形維持を両立させる。
+ */
+export const WEIGHTS = {
+  // 蓄積攻撃（探索中に消した行から得た攻撃）
+  attack: 10,
+  attackPerPiece: 2.0,
+  // B2Bチェーン
+  b2b: 3.0,
+  // コンボ継続
+  combo: 1.2,
+  // 地形
+  holes: -40,
+  coverHole: -6, // 穴の上にかぶせたブロック数（深い穴ほど悪い）の追加ペナルティ係数
+  aggregateHeight: -0.35,
+  maxHeight: -0.5,
+  bumpiness: -2.5,
+  wells: -1.6, // ウェル合計（三角和）。1本のウェルは許容し複数を抑える
+  rowTransitions: -1.2,
+  colTransitions: -1.2,
+  nearFull: 4.0, // 9/10埋まりの行（1マスで消える）
+  parity: -1.5,
+  tSlot: 2.0,
+  // 高度ペナルティ（高さが閾値を超えると急激に厳しくする）
+  dangerHeight: 14,
+  dangerSlope: 6.0,
+  criticalHeight: 18,
+  criticalSlope: 40.0,
 };
 
-export function countHoles(board: BitBoard): number {
+export interface BoardFeatures {
+  heights: number[];
+  maxHeight: number;
+  aggregateHeight: number;
+  bumpiness: number;
+  holes: number;
+  cover: number; // 穴の上のブロック総数（穴の深さ評価）
+  rowTransitions: number;
+  colTransitions: number;
+  wellSum: number;
+  maxWell: number;
+  nearFullRows: number;
+  parity: number;
+  tSlots: number;
+  fullRowsPotential: number; // 8個以上埋まった行の (filled-7) の総和
+}
+
+const featuresCache = new Map<string, BoardFeatures>();
+const FEATURES_CACHE_MAX = 30000;
+
+function popcount32(v: number): number {
+  v = v - ((v >>> 1) & 0x55555555);
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+  v = (v + (v >>> 4)) & 0x0f0f0f0f;
+  return Math.imul(v, 0x01010101) >>> 24;
+}
+
+export function computeFeatures(board: BitBoard): BoardFeatures {
+  const cached = featuresCache.get(board.hash());
+  if (cached) return cached;
+
+  const heights: number[] = new Array(BOARD_WIDTH).fill(0);
   let holes = 0;
+  let cover = 0;
+  let colTransitions = 0;
+  let maxHeight = 0;
+  let aggregateHeight = 0;
+
+  // --- 列ごとの特徴 ---
   for (let x = 0; x < BOARD_WIDTH; x++) {
-    let col = board.cols[x];
-    let filled = false;
-    for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
-      if (col & 1n) {
-        filled = true;
-      } else if (filled) {
-        holes++;
-      }
-      col >>= 1n;
+    const lo = board.words[x * 2];
+    const hi = board.words[x * 2 + 1];
+    if (lo === 0 && hi === 0) {
+      heights[x] = 0;
+      colTransitions += 1; // 空列: 底壁との境界1回
+      continue;
     }
-  }
-  return holes;
-}
+    // 最上行（最小セットビットインデックス）
+    let topY: number;
+    if (lo !== 0) topY = 31 - Math.clz32(lo & -lo);
+    else topY = BOARD_LO_BITS + (31 - Math.clz32(hi & -hi));
+    const height = BOARD_TOTAL_HEIGHT - topY;
+    heights[x] = height;
+    aggregateHeight += height;
+    if (height > maxHeight) maxHeight = height;
 
-function columnHeights(board: BitBoard): number[] {
-  const heights = new Array(BOARD_WIDTH).fill(0);
-  for (let x = 0; x < BOARD_WIDTH; x++) {
-    let col = board.cols[x];
-    let y = 0;
-    while (col !== 0n && y < BOARD_TOTAL_HEIGHT) {
-      if (col & 1n) {
-        heights[x] = BOARD_TOTAL_HEIGHT - y;
-        break;
-      }
-      col >>= 1n;
-      y++;
+    // 穴 = 最上行より下の空きセル
+    let filledBelow: number;
+    if (topY >= BOARD_LO_BITS) {
+      filledBelow = popcount32(hi >>> (topY - BOARD_LO_BITS + 1));
+    } else {
+      filledBelow = popcount32(hi); // hi 側は全部 topY より下
+      if (topY < 31) filledBelow += popcount32(lo >>> (topY + 1));
     }
-  }
-  return heights;
-}
+    const colHoles = height - 1 - filledBelow;
+    holes += colHoles;
+    // カバー: 穴の上のブロック数 ≒ height - 1 - 穴数
+    cover += colHoles > 0 ? (height - 1 - colHoles) : 0;
 
-function countDeepHoles(board: BitBoard): number {
-  let penalty = 0;
-  for (let x = 0; x < BOARD_WIDTH; x++) {
-    let col = board.cols[x];
-    let filled = false;
-    let holeDepth = 0;
-    for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
-      if (col & 1n) {
-        filled = true;
-        if (holeDepth >= 3) {
-          penalty += (holeDepth - 2) ** 2 * 10;
-        }
-        holeDepth = 0;
-      } else if (filled) {
-        holeDepth++;
-      }
-      col >>= 1n;
+    // 列内遷移（上から下へ走査、底壁を埋まり扱い）
+    let prev = 1; // 天井は空扱いでなく、最初のブロック手前は空
+    prev = 0;
+    let transitions = 0;
+    let seenFilled = false;
+    for (let y = topY; y < BOARD_TOTAL_HEIGHT; y++) {
+      const filled = y < BOARD_LO_BITS
+        ? ((lo >>> y) & 1)
+        : ((hi >>> (y - BOARD_LO_BITS)) & 1);
+      if (filled !== prev) transitions++;
+      prev = filled;
+      if (filled) seenFilled = true;
     }
-    if (holeDepth >= 3) {
-      penalty += (holeDepth - 2) ** 2 * 10;
-    }
+    if (prev === 0) transitions++; // 底壁
+    colTransitions += seenFilled ? transitions : 1;
   }
-  return penalty;
-}
 
-function calcBumpiness(heights: number[]): number {
-  let bump = 0;
-  for (let i = 0; i < heights.length - 1; i++) {
-    bump += Math.abs(heights[i] - heights[i + 1]);
-  }
-  return bump;
-}
+  // --- 行ごとの特徴 ---
+  let rowTransitions = 0;
+  let nearFullRows = 0;
+  let parity = 0;
+  let fullRowsPotential = 0;
+  const wellRuns = new Array(BOARD_WIDTH).fill(0);
+  let wellSum = 0;
+  let maxWell = 0;
 
-function calcRowTransitions(board: BitBoard): number {
-  let transitions = 0;
-  for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
-    let prev = 0;
+  const minTopY = BOARD_TOTAL_HEIGHT - maxHeight;
+  for (let y = minTopY; y < BOARD_TOTAL_HEIGHT; y++) {
+    // 行の占有ワードを作る
+    let rowWord = 0;
     for (let x = 0; x < BOARD_WIDTH; x++) {
-      const cur = board.get(x, y) ? 1 : 0;
-      if (cur !== prev) transitions++;
+      const w = y < BOARD_LO_BITS ? board.words[x * 2] : board.words[x * 2 + 1];
+      const b = y < BOARD_LO_BITS ? y : y - BOARD_LO_BITS;
+      if (w & (1 << b)) rowWord |= 1 << x;
+    }
+    const filled = popcount32(rowWord);
+
+    if (filled === 9) nearFullRows++;
+    if (filled >= 8) fullRowsPotential += filled - 7;
+
+    // 行内遷移（左右壁を埋まり扱い）
+    let rt = 0;
+    let prev = 1; // 左壁
+    for (let x = 0; x < BOARD_WIDTH; x++) {
+      const cur = (rowWord >>> x) & 1;
+      if (cur !== prev) rt++;
       prev = cur;
     }
+    if (prev === 0) rt++; // 右壁
+    rowTransitions += rt;
+
+    // ウェル: 空きセルで左右が埋まり（壁を含む）
+    for (let x = 0; x < BOARD_WIDTH; x++) {
+      if (rowWord & (1 << x)) {
+        if (wellRuns[x] > 0) {
+          wellSum += tri(wellRuns[x]);
+          if (wellRuns[x] > maxWell) maxWell = wellRuns[x];
+          wellRuns[x] = 0;
+        }
+        continue;
+      }
+      const left = x === 0 ? true : ((rowWord >>> (x - 1)) & 1) === 1;
+      const right = x === BOARD_WIDTH - 1 ? true : ((rowWord >>> (x + 1)) & 1) === 1;
+      if (left && right) {
+        wellRuns[x]++;
+      } else if (wellRuns[x] > 0) {
+        wellSum += tri(wellRuns[x]);
+        if (wellRuns[x] > maxWell) maxWell = wellRuns[x];
+        wellRuns[x] = 0;
+      }
+    }
   }
-  return transitions;
+  for (let x = 0; x < BOARD_WIDTH; x++) {
+    if (wellRuns[x] > 0) {
+      wellSum += tri(wellRuns[x]);
+      if (wellRuns[x] > maxWell) maxWell = wellRuns[x];
+    }
+  }
+
+  // パリティ（チェッカーボード不均衡）
+  {
+    let p = 0;
+    for (let y = minTopY; y < BOARD_TOTAL_HEIGHT; y++) {
+      let rowWord = 0;
+      for (let x = 0; x < BOARD_WIDTH; x++) {
+        const w = y < BOARD_LO_BITS ? board.words[x * 2] : board.words[x * 2 + 1];
+        const b = y < BOARD_LO_BITS ? y : y - BOARD_LO_BITS;
+        if (w & (1 << b)) rowWord |= 1 << x;
+      }
+      for (let x = 0; x < BOARD_WIDTH; x++) {
+        if (rowWord & (1 << x)) p += ((x + y) & 1) === 0 ? 1 : -1;
+      }
+    }
+    parity = Math.abs(p);
+  }
+
+  const bumpiness = (() => {
+    let b = 0;
+    for (let i = 0; i < BOARD_WIDTH - 1; i++) {
+      b += Math.abs(heights[i] - heights[i + 1]);
+    }
+    return b;
+  })();
+
+  const tSlots = countTSlotShapes(board);
+
+  const features: BoardFeatures = {
+    heights,
+    maxHeight,
+    aggregateHeight,
+    bumpiness,
+    holes,
+    cover,
+    rowTransitions,
+    colTransitions,
+    wellSum,
+    maxWell,
+    nearFullRows,
+    parity,
+    tSlots,
+    fullRowsPotential,
+  };
+
+  if (featuresCache.size > FEATURES_CACHE_MAX) {
+    const first = featuresCache.keys().next().value;
+    if (first !== undefined) featuresCache.delete(first);
+  }
+  featuresCache.set(board.hash(), features);
+  return features;
 }
 
-function tetrisWellDepth(board: BitBoard): number {
-  const heights = columnHeights(board);
-  let best = 0;
-  for (let wellX = 0; wellX < BOARD_WIDTH; wellX++) {
-    let depth = 0;
-    for (let y = BOARD_TOTAL_HEIGHT - 1; y >= 0; y--) {
-      let full = true;
-      for (let x = 0; x < BOARD_WIDTH; x++) {
-        if (x === wellX) continue;
-        if (!board.get(x, y)) {
-          full = false;
-          break;
-        }
-      }
-      if (full) depth++;
-      else break;
-    }
-    best = Math.max(best, depth);
-  }
-  return best;
+function tri(n: number): number {
+  return (n * (n + 1)) / 2;
 }
 
 function countTSlotShapes(board: BitBoard): number {
+  // Tミノを差し込める形状の簡易検出（左受け・右受け）
   let count = 0;
   for (let x = 0; x < BOARD_WIDTH - 2; x++) {
-    for (let y = 0; y < BOARD_TOTAL_HEIGHT - 3; y++) {
-      const left = board.get(x, y) && board.get(x, y + 1) && board.get(x, y + 2);
-      const center = !board.get(x + 1, y) && !board.get(x + 1, y + 1) && !board.get(x + 1, y + 2);
-      const right = board.get(x + 2, y + 1) && board.get(x + 2, y + 2) && board.get(x + 2, y + 3);
-      if (left && center && right) count++;
-    }
-  }
-  // 右受け・簡易TST・TSSは省略せず簡易検出する
-  for (let x = 0; x < BOARD_WIDTH - 2; x++) {
-    for (let y = 0; y < BOARD_TOTAL_HEIGHT - 3; y++) {
-      const left = board.get(x, y + 1) && board.get(x, y + 2) && board.get(x, y + 3);
-      const center = !board.get(x + 1, y) && !board.get(x + 1, y + 1) && !board.get(x + 1, y + 2);
-      const right = board.get(x + 2, y) && board.get(x + 2, y + 1) && board.get(x + 2, y + 2);
-      if (left && center && right) count++;
+    for (let y = 1; y < BOARD_TOTAL_HEIGHT - 1; y++) {
+      // 左受け: (x,y+1),(x,y),(x+2,y+1),(x+2,y) が埋まり (x+1,y),(x+1,y+1) が空き
+      const l = board.get(x, y) && board.get(x, y + 1);
+      const r = board.get(x + 2, y) && board.get(x + 2, y + 1);
+      const c = !board.get(x + 1, y) && !board.get(x + 1, y + 1);
+      const below = board.get(x + 1, y + 2);
+      if (l && r && c && below) count++;
     }
   }
   return count;
 }
 
-function calcParityBalance(heights: number[]): number {
-  const leftAvg = (heights[0] + heights[1] + heights[2] + heights[3] + heights[4]) / 5;
-  const rightAvg = (heights[5] + heights[6] + heights[7] + heights[8] + heights[9]) / 5;
-  return -Math.abs(leftAvg - rightAvg);
+export function countHoles(board: BitBoard): number {
+  return computeFeatures(board).holes;
 }
 
-function countRowPotential(board: BitBoard): number {
-  let potential = 0;
-  for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
-    let filled = 0;
-    for (let x = 0; x < BOARD_WIDTH; x++) {
-      if (board.get(x, y)) filled++;
-    }
-    if (filled >= 8) potential += filled - 7;
-  }
-  return potential;
-}
-
-function countDeepWellColumns(board: BitBoard): number {
-  let count = 0;
-  for (let x = 0; x < BOARD_WIDTH; x++) {
-    let col = board.cols[x];
-    let filled = false;
-    let holeDepth = 0;
-    for (let y = 0; y < BOARD_TOTAL_HEIGHT; y++) {
-      if (col & 1n) {
-        filled = true;
-        if (holeDepth >= 3) {
-          count++;
-          break;
-        }
-        holeDepth = 0;
-      } else if (filled) {
-        holeDepth++;
-      }
-      col >>= 1n;
-    }
-    if (holeDepth >= 3) {
-      count++;
-    }
-  }
-  return count;
-}
-
-// 上から空いている縦穴（オープンウェル）の本数を数える
-function countOpenWellColumns(board: BitBoard): number {
-  const heights = columnHeights(board);
-  let count = 0;
-  for (let x = 1; x < BOARD_WIDTH - 1; x++) {
-    if (heights[x] <= heights[x - 1] - 3 && heights[x] <= heights[x + 1] - 3) {
-      count++;
-    }
-  }
-  // 端のウェルも検出（壁との差）
-  if (heights[0] <= heights[1] - 3) count++;
-  if (heights[BOARD_WIDTH - 1] <= heights[BOARD_WIDTH - 2] - 3) count++;
-
-  return count;
-}
-
+/** 互換用ラッパー */
 export function computeTerrainScore(state: SearchState): TerrainScore {
-  const board = state.board;
-  const heights = columnHeights(board);
-  const holes = countHoles(board);
-  const deepHolePenalty = countDeepHoles(board);
-  const bumpiness = calcBumpiness(heights);
-  const maxHeight = Math.max(...heights);
-  const rowTransitions = calcRowTransitions(board);
-  const tSlotCount = countTSlotShapes(board);
-  const quadWellDepth = tetrisWellDepth(board);
-  const centerStackHeight = (heights[4] + heights[5]) / 2;
-  const sideAvg = (heights[0] + heights[1] + heights[8] + heights[9]) / 4;
-  const allAvg = heights.reduce((a, b) => a + b, 0) / BOARD_WIDTH;
-  const sideCoverage = (sideAvg - allAvg) * 2.0;
-
-  const iAvailableSoon =
-    state.current === 'I' ||
-    state.hold === 'I' ||
-    state.bag.slice(0, 4).includes('I');
-
-  const heightPenalty = (() => {
-    let penalty = 0;
-    if (maxHeight > 12) {
-      penalty += (maxHeight - 12) ** 2 * 4;      // 中盤から厳しく
-    }
-    if (maxHeight > 18) {
-      penalty += (maxHeight - 18) ** 3 * 15;     // 危険域では非常に厳しく
-    }
-    if (maxHeight >= 20) {
-      penalty += 800;                             // ゲームオーバー寸前
-    }
-    return penalty;
-  })();
-  const deepWellCount = countDeepWellColumns(board);
-  const openWellCount = countOpenWellColumns(board);
-
-  const hazard =
-    heightPenalty +
-    holes * 12 +
-    deepHolePenalty * 3 +
-    (deepWellCount > 1 ? (deepWellCount - 1) * 30 : 0) +  // ★ I依存ウェル2本以上を厳罰化
-    (openWellCount > 1 ? (openWellCount - 1) * 50 : 0) +  // ★ 2本目以降のオープンウェルを厳罰化
-    (maxHeight > 20 ? 50 : 0);
-
-  const b2bPotential =
-    tSlotCount * 0.8 +
-    (quadWellDepth > 0
-      ? iAvailableSoon
-        ? quadWellDepth * 1.2
-        : -quadWellDepth * 2.0
-      : 0) +
-    -bumpiness * 1.2 +
-    -holes * 6.0 +
-    -rowTransitions * 0.3 +
-    calcParityBalance(heights) * 0.6 +
-    sideCoverage +
-    countRowPotential(board) * 1.5;
-
+  const f = computeFeatures(state.board);
   return {
-    total: b2bPotential,
-    b2bPotential,
-    tSlotCount,
-    quadWellDepth,
-    centerStackHeight,
-    hazard,
+    total: 0,
+    b2bPotential: 0,
+    tSlotCount: f.tSlots,
+    quadWellDepth: f.maxWell,
+    centerStackHeight: (f.heights[4] + f.heights[5]) / 2,
+    hazard: -terrainScore(f),
   };
 }
 
+function terrainScore(f: BoardFeatures): number {
+  let s = 0;
+  s += f.holes * WEIGHTS.holes;
+  s += f.cover * WEIGHTS.coverHole;
+  s += f.aggregateHeight * WEIGHTS.aggregateHeight;
+  s += f.maxHeight * WEIGHTS.maxHeight;
+  s += f.bumpiness * WEIGHTS.bumpiness;
+  s += f.wellSum * WEIGHTS.wells;
+  s += f.rowTransitions * WEIGHTS.rowTransitions;
+  s += f.colTransitions * WEIGHTS.colTransitions;
+  s += f.nearFullRows * WEIGHTS.nearFull;
+  s += f.parity * WEIGHTS.parity;
+  s += f.tSlots * WEIGHTS.tSlot;
+
+  // 危険高度ペナルティ（2段階）
+  if (f.maxHeight > WEIGHTS.dangerHeight) {
+    s += (f.maxHeight - WEIGHTS.dangerHeight) ** 2 * WEIGHTS.dangerSlope;
+  }
+  if (f.maxHeight > WEIGHTS.criticalHeight) {
+    s += (f.maxHeight - WEIGHTS.criticalHeight) ** 2 * WEIGHTS.criticalSlope;
+  }
+  return s;
+}
+
 export function evaluateState(state: SearchState): number {
-  const terrain = computeTerrainScore(state);
-
-  const tAvailable =
-    (state.current === 'T' ? 1 : 0) +
-    state.bag.filter((p) => p === 'T').length +
-    (state.hold === 'T' ? 1 : 0);
-
-  const iAvailable =
-    (state.current === 'I' ? 1 : 0) +
-    state.bag.filter((p) => p === 'I').length +
-    (state.hold === 'I' ? 1 : 0);
-
-  const piecesUsed = Math.max(1, state.placements.length);
-  const attackPerPiece = state.accumulatedAttack / piecesUsed;
-
-  // 将来のB2B継続ポテンシャル
-  const futureB2BPotential =
-    terrain.tSlotCount * 1.5 * (0.5 + tAvailable * 0.4) +
-    (terrain.quadWellDepth > 0
-      ? iAvailable
-        ? terrain.quadWellDepth * 0.8
-        : -terrain.quadWellDepth * 3.0
-      : 0);
+  const f = computeFeatures(state.board);
 
   let value = 0;
-  value += state.accumulatedAttack * WEIGHTS.accumulatedAttack;
-  value += attackPerPiece * WEIGHTS.attackEfficiency;
+
+  // 蓄積攻撃
+  value += state.accumulatedAttack * WEIGHTS.attack;
+  const piecesUsed = Math.max(1, state.placements.length);
+  value += (state.accumulatedAttack / piecesUsed) * WEIGHTS.attackPerPiece;
+
+  // コンボ
   value += Math.max(0, state.comboCount - 1) * WEIGHTS.combo;
-  value += terrain.total * WEIGHTS.terrain;
-  value -= terrain.hazard * WEIGHTS.hazard;
-  value += futureB2BPotential;
 
-  // ★ B2B カウントを非線形で評価
-  const b2bCount = Math.max(0, state.difficultClearCount - 1);
-  if (b2bCount > 0) {
-    value += b2bCount * WEIGHTS.b2bChain;
-    value += b2bCount * b2bCount * 1.5;
-    if (b2bCount >= 4) {
-      value += (b2bCount - 3) * 3.0;
-    }
+  // B2B
+  const b2b = Math.max(0, state.difficultClearCount - 1);
+  if (b2b > 0) {
+    value += Math.log2(1 + b2b) * WEIGHTS.b2b * 2;
   }
 
-  if (state.lastSpinAction) {
-    value += WEIGHTS.spinActionBonus;
-    if (state.lastCleared > 0) {
-      value += WEIGHTS.spinClearBonus;
-    }
-  }
-
-  // B2Bを切る通常消去（非スピンで1～3列）への強いペナルティ
+  // 直近の消去がB2Bを切る通常消去ならペナルティ
   if (state.lastCleared > 0 && state.lastCleared < 4 && !state.lastSpinAction) {
-    value -= WEIGHTS.b2bBreakPenalty;
+    value -= 25;
   }
 
-  // 通常消去の加点（スピン以外の消去は弱く）
-  value += state.lastCleared * WEIGHTS.clearBonus;
-
-  // All Clear
-  if (state.board.isEmpty() && state.lastCleared > 0) {
-    if (state.difficultClearCount > 1) {
-      // B2Bを維持したAll Clear（理想）
-      value += WEIGHTS.allClearGoalBonus;
-    } else {
-      // B2Bを切ったAll Clearはあまり価値がない
-      value += WEIGHTS.allClearBonus;
-    }
-  }
+  // 地形
+  value += terrainScore(f);
 
   return value;
 }
