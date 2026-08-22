@@ -137,6 +137,16 @@ function bagCode(bag: MinoType[]): number {
   return c;
 }
 
+/** 現在+ホールド+バッグ先頭4に I があるか */
+function iAvailableSoon(s: SimState): boolean {
+  if (s.current === 'I') return true;
+  if (s.hold === 'I') return true;
+  for (let i = 0; i < Math.min(4, s.bag.length); i++) {
+    if (s.bag[i] === 'I') return true;
+  }
+  return false;
+}
+
 function nodeKey(s: SimState): string {
   return `${s.board.hash()}|${s.current}|${bagCode(s.bag)}|${s.hold}|${s.canHold ? 1 : 0}|${s.comboCount}|${s.difficultClearCount}`;
 }
@@ -200,7 +210,7 @@ export function dagSearch(
     depth: 0,
     parents: null,
     children: null,
-    eval: heuristicOf(rootBoard, rootB2B),
+    eval: heuristicOf(rootBoard, rootB2B, rootCurrent === 'I' || rootHold === 'I' || rootBag.slice(0, 4).includes('I')),
     expanded: false,
     dead: false,
   };
@@ -309,7 +319,7 @@ export function dagSearch(
         depth,
         parents: [],
         children: null,
-        eval: heuristicOf(st.board, st.difficultClearCount),
+        eval: heuristicOf(st.board, st.difficultClearCount, iAvailableSoon(st)),
         expanded: false,
         dead: false,
       };

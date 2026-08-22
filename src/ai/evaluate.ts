@@ -78,6 +78,18 @@ export const DEFAULT_HEURISTIC_WEIGHTS = {
   hasBackToBack: 0.8,
   /** Tスロット潜在力 */
   tSlot: 0.3,
+  /**
+   * クアッド用ウェル以外の競合ウェルペナルティ。
+   * ※検証の結果、静的ペナルティは過渡期地形への過剰な制約となりAPMが大幅低下
+   *   するため無効（動的報酬: B2B比例ペナルティ等で代替）。
+   */
+  extraOpenWell: 0,
+  /** ウェル列を除いた表面の凹凸（同上、無効）*/
+  bumpinessNoWell: 0,
+  /** チェッカーボードパリティ不均衡（S/Z/J/L の置きにくさの指標）*/
+  parity: -0.04,
+  /** I ミノが遠いときのウェル深度割引（掛け率）*/
+  wellDepthNoIFactor: 0.4,
 };
 export type RewardWeights = typeof DEFAULT_REWARD_WEIGHTS;
 export type HeuristicWeights = typeof DEFAULT_HEURISTIC_WEIGHTS;
@@ -108,6 +120,12 @@ export interface BoardFeatures {
   wideHoles: number;
   /** 消去進行度: Σ max(0, 埋まり数-7) （クアッド/PC接近の指標）*/
   clearProgress: number;
+  /** 他より3以上低い列の数（主ウェル含む）*/
+  openWells: number;
+  /** 主ウェル列を除いた隣接高さ差の総和 */
+  bumpinessNoWell: number;
+  /** チェッカーボード不均衡（絶対値）*/
+  parity: number;
   tSlots: number;
 }
 
@@ -301,6 +319,37 @@ export function computeFeatures(board: BitBoard): BoardFeatures {
     }
   }
 
+  // --- 競合オープンウェル・凹凸・パリティ ---
+  // 他より3以上低い列 = クアッド用ウェルの候補。2本以上あると次のクアッドが
+  // 不確実になり B2B 接続が困難になる。
+  let openWells = 0;
+  for (let x = 0; x < BOARD_WIDTH; x++) {
+    const leftH = x === 0 ? heights[1] : heights[x - 1];
+    const rightH = x === BOARD_WIDTH - 1 ? heights[x - 1] : heights[x + 1];
+    if (heights[x] <= leftH - 3 && heights[x] <= rightH - 3) openWells++;
+  }
+
+  // 主ウェル列を除いた隣接高さ差
+  let bumpinessNoWell = 0;
+  for (let i = 0; i < BOARD_WIDTH - 1; i++) {
+    if (i === wellColumn || i + 1 === wellColumn) continue;
+    bumpinessNoWell += Math.abs(heights[i] - heights[i + 1]);
+  }
+
+  // チェッカーボードパリティ不均衡
+  let parityAbs = 0;
+  {
+    let p = 0;
+    for (let i = 0; i < rowCount; i++) {
+      const y = minTopY + i;
+      const rowWord = rowWords[i];
+      const posMask = ((y & 1) === 0) ? 0x155 : 0x2aa;
+      const negMask = ((y & 1) === 0) ? 0x2aa : 0x155;
+      p += popcount32(rowWord & posMask) - popcount32(rowWord & negMask);
+    }
+    parityAbs = Math.abs(p);
+  }
+
   // --- Tスロット簡易検出（左右受けオーバーハング）---
   let tSlots = 0;
   for (let i = 0; i + 2 < rowCount; i++) {
@@ -336,6 +385,9 @@ export function computeFeatures(board: BitBoard): BoardFeatures {
     clearProgress,
     narrowHoles,
     wideHoles,
+    openWells,
+    bumpinessNoWell,
+    parity: parityAbs,
     tSlots,
   };
 
@@ -352,7 +404,11 @@ export function countHoles(board: BitBoard): number {
 }
 
 /** 盤面の静的ヒューリスティック値（高いほど良い） */
-export function heuristicOf(board: BitBoard, difficultClearCount: number): number {
+export function heuristicOf(
+  board: BitBoard,
+  difficultClearCount: number,
+  iAvailableSoon: boolean = true,
+): number {
   const f = computeFeatures(board);
   const W = HEURISTIC_WEIGHTS;
   let h = 0;
@@ -370,8 +426,16 @@ export function heuristicOf(board: BitBoard, difficultClearCount: number): numbe
   if (f.maxHeight >= W.deadHeight) {
     h += W.deadPenalty;
   }
-  h += f.tetrisWellDepth * W.tetrisWellDepth;
+  // ウェル深度は I が近くにならないと活かせないため割引
+  const wellFactor = iAvailableSoon ? 1 : W.wellDepthNoIFactor;
+  h += f.tetrisWellDepth * W.tetrisWellDepth * wellFactor;
   h += f.wellSum * W.wellSum;
+  // 競合ウェル: 主ウェル以外にあると次のクアッドが不確実
+  if (f.openWells > 1) {
+    h += W.extraOpenWell * (f.openWells - 1);
+  }
+  h += f.bumpinessNoWell * W.bumpinessNoWell;
+  h += f.parity * W.parity;
   h += f.clearProgress * W.clearProgress;
   h += f.nearFullRows * W.nearFull;
   h += f.tSlots * W.tSlot;

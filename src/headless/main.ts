@@ -92,6 +92,7 @@ function main() {
       `game ${String(i + 1).padStart(String(args.games).length)}: ` +
         `pieces=${String(result.pieces).padStart(4)} lines=${String(result.lines).padStart(4)} ` +
         `atk=${String(result.attack).padStart(5)} APM=${result.apm.toFixed(1).padStart(6)} ` +
+        `APP=${(result.attack / Math.max(1, result.pieces)).toFixed(3)} ` +
         `PPS=${result.pps.toFixed(3)} score=${result.score}`,
     );
 
@@ -104,6 +105,7 @@ function main() {
 
   console.log('');
   console.log(summary('APM     ', results.map((r) => r.apm)));
+  console.log(summary('APP     ', results.map((r) => r.app)));
   console.log(summary('PPS     ', results.map((r) => r.pps)));
   console.log(summary('pieces  ', results.map((r) => r.pieces)));
   console.log(summary('lines   ', results.map((r) => r.lines)));
@@ -113,7 +115,10 @@ function main() {
 
   const apmValues = results.map((r) => r.apm);
   const meanApm = apmValues.reduce((a, b) => a + b, 0) / apmValues.length;
-  console.log(`\ntarget APM @ ${args.pps} PPS: 70 → ${meanApm >= 70 ? 'PASS ✔' : 'FAIL ✘'} (${meanApm.toFixed(1)})`);
+  const apps = results.map((r) => r.app);
+  const meanApp = apps.reduce((a, b) => a + b, 0) / apps.length;
+  console.log(`\nmean APP=${meanApp.toFixed(3)} (strong play >= 1.000)`);
+  console.log(`target APM @ ${args.pps} PPS: 70 → ${meanApm >= 70 ? 'PASS ✔' : 'FAIL ✘'} (${meanApm.toFixed(1)})`);
 }
 
 main();

@@ -36,6 +36,8 @@ export interface GameResult {
   playTimeSec: number;
   apm: number;
   pps: number;
+  /** Attack per Piece（1を超えると強豪級）*/
+  app: number;
   b2bMax: number;
   comboMax: number;
   /** 消去種別ごとの回数 */
@@ -185,6 +187,7 @@ export function runHeadlessGame(options: HeadlessOptions, seed: number): GameRes
     playTimeSec: core.playTime,
     apm: (core.totalAttackSent / Math.max(core.playTime, 1 / 60)) * 60,
     pps: core.piecesPlaced / Math.max(core.playTime, 1 / 60),
+    app: core.totalAttackSent / Math.max(1, core.piecesPlaced),
     b2bMax: b2bMaxChain,
     comboMax: comboMaxChain,
     clearCounts,
