@@ -40,6 +40,8 @@ export interface GameResult {
   comboMax: number;
   /** 消去種別ごとの回数 */
   clearCounts: Record<string, number>;
+  /** 各手終了時の最大高さの平均（地形滞留の指標） */
+  avgMaxHeight: number;
 }
 
 export function mulberry32(seed: number): () => number {
@@ -90,6 +92,8 @@ export function runHeadlessGame(options: HeadlessOptions, seed: number): GameRes
   const clearCounts: Record<string, number> = {};
   let b2bMaxChain = 0;
   let comboMaxChain = 0;
+  let heightSum = 0;
+  let heightSamples = 0;
   // actionMessage は update() を介さないと消えないため、行数デルタで消去を検出する
   let lastLines = core.lines;
   const origLock = core.lockPiece.bind(core);
@@ -149,6 +153,18 @@ export function runHeadlessGame(options: HeadlessOptions, seed: number): GameRes
 
     core.update(frameMs);
 
+    // 高度サンプル
+    {
+      let mh = 0;
+      for (let x = 0; x < 10; x++) {
+        for (let y = 0; y < 40; y++) {
+          if (core.board.grid[y][x]) { const h = 40 - y; if (h > mh) mh = h; break; }
+        }
+      }
+      heightSum += mh;
+      heightSamples++;
+    }
+
     if (options.onPiece) {
       options.onPiece({
         piece: core.piecesPlaced,
@@ -172,5 +188,6 @@ export function runHeadlessGame(options: HeadlessOptions, seed: number): GameRes
     b2bMax: b2bMaxChain,
     comboMax: comboMaxChain,
     clearCounts,
+    avgMaxHeight: heightSamples > 0 ? heightSum / heightSamples : 0,
   };
 }

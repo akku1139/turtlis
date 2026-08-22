@@ -4,7 +4,7 @@ import type { BitBoard } from './bitboard.ts';
 import { generatePlacements } from './movegen.ts';
 import { simulateLock, simulateHold, getPieceCells, spawnX, spawnY } from './pure.ts';
 import type { LockResult } from './pure.ts';
-import { heuristicOf, rewardOf } from './evaluate.ts';
+import { heuristicOf, rewardOf, computeFeatures } from './evaluate.ts';
 import { BOARD_WIDTH } from '../constants.ts';
 
 /**
@@ -330,6 +330,7 @@ export function dagSearch(
       : -1;
 
     const processMoves = (s: SimState): void => {
+      const parentFeatures = computeFeatures(s.board);
       const moves = generatePlacements(s.board, s.current);
       for (const mv of moves) {
         const outcome = advanceWithPlacement(s, mv);
@@ -341,7 +342,10 @@ export function dagSearch(
           if (nh > parentHolesTotal + 2) continue;
         }
 
-        let reward = rewardOf(mv.piece, outcome.result, outcome.result.totalAttack);
+        let reward = rewardOf(mv.piece, outcome.result, outcome.result.totalAttack, {
+          stackHeight: parentFeatures.maxHeight,
+          b2bCount: s.difficultClearCount,
+        });
         // 前回計画との一致ボーナス（同じ系統の積みを継続させる）
         if (options.preferredBoardHashes && outcome.state.board.hash() === options.preferredBoardHashes[node.depth + 1]) {
           reward += 0.6;

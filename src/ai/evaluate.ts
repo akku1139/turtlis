@@ -25,6 +25,19 @@ export const DEFAULT_REWARD_WEIGHTS = {
   nonTSpinClears: [0, 2.5, 4.0],
   /** 非TスピンでB2Bが継続した場合の追加ボーナス */
   nonTSpinB2B: 1.5,
+  /**
+   * 盤面が高いときの通常消去ペナルティ緩和閾値と緩和率。
+   * クアッド待ちで延々積み上げる(高さ滞留)を防ぐ。
+   */
+  digRelaxFrom: 11,
+  digRelaxHalfFrom: 14,
+  digRelaxFactor: 0.25,
+  /** 高度が高いときの掘削クリア報酬(1列あたり) */
+  digClearPerLine: 0.7,
+  /** B2Bを切ったときの基本ペナルティ */
+  b2bBreakBase: 1.0,
+  /** 継続中だったチェーン長に比例する追従ペナルティ */
+  b2bBreakPerChain: 0.8,
   /** B2Bが継続した消去 */
   b2bClear: 1.5,
   /** Perfect Clear */
@@ -395,6 +408,14 @@ export function evaluateState(state: SearchState): number {
   return value;
 }
 
+/** 報酬計算のための直前状態の文脈 */
+export interface RewardContext {
+  /** 直前の盤面の最大高さ */
+  stackHeight: number;
+  /** 直前の difficultClearCount（この手でB2Bが切れるか判定用） */
+  b2bCount: number;
+}
+
 /**
  * 1手の報酬（cold-clear流の整形済み報酬）
  */
@@ -402,6 +423,7 @@ export function rewardOf(
   piece: string,
   result: LockResult,
   attackValue: number,
+  context?: RewardContext,
 ): number {
   const W = REWARD_WEIGHTS;
   let r = 0;
@@ -421,7 +443,18 @@ export function rewardOf(
       r += W.nonTSpinB2B;
     }
   } else {
-    r += W.normalClears[Math.min(cleared, 4)];
+    let nc = W.normalClears[Math.min(cleared, 4)];
+    if (nc < 0 && context) {
+      // 高所ではペナルティを緩めて掘り出しを促す
+      const relax = context.stackHeight >= W.digRelaxHalfFrom
+        ? W.digRelaxFactor
+        : context.stackHeight >= W.digRelaxFrom ? 0.5 : 1;
+      nc *= relax;
+    }
+    r += nc;
+    if (context && cleared > 0 && context.stackHeight >= W.digRelaxFrom && result.spinKind === 'none') {
+      r += W.digClearPerLine * cleared;
+    }
   }
 
   // B2B継続ボーナス
@@ -429,9 +462,13 @@ export function rewardOf(
     r += W.b2bClear;
   }
 
-  // B2Bを切る通常消去の明示ペナルティ
-  if (cleared > 0 && cleared < 4 && !result.isSpinAction && result.newDifficultClearCount === 0) {
-    r -= 1.0;
+  // B2Bを切る通常消去の明示ペナルティ（失うチェーン長に比例）
+  if (
+    cleared > 0 && cleared < 4 && !result.isSpinAction &&
+    result.newDifficultClearCount === 0
+  ) {
+    const lostChain = context ? Math.max(0, context.b2bCount - 1) : 0;
+    r -= W.b2bBreakBase + W.b2bBreakPerChain * lostChain;
   }
 
   // コンボ
