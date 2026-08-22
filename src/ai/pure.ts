@@ -8,11 +8,11 @@ import type { Placement } from './types.ts';
 const kickTable = new SRSPlusKickTable();
 
 // 事前計算した回転行列キャッシュ
-const matrixCache: Map<string, number[][]> = new Map();
+const matrixByPieceRot: (number[][] | undefined)[] = new Array(7 * 4);
 
 function getCachedMatrix(piece: MinoType, rotation: MinoState): number[][] {
-  const key = `${piece}-${rotation}`;
-  let cached = matrixCache.get(key);
+  const idx = PIECE_INDEX[piece] * 4 + rotation;
+  let cached = matrixByPieceRot[idx];
   if (cached) return cached;
 
   const tetro = new Tetromino(piece);
@@ -29,7 +29,7 @@ function getCachedMatrix(piece: MinoType, rotation: MinoState): number[][] {
       matrix = tetro.getRotatedMatrix(dir);
     }
   }
-  matrixCache.set(key, matrix);
+  matrixByPieceRot[idx] = matrix;
   return matrix;
 }
 

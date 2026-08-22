@@ -1,8 +1,11 @@
 import { GameCore } from '../gamecore.ts';
 import { beamSearch } from '../ai/beamsearch.ts';
 import { buildSearchState } from '../ai/search.ts';
+import { dagSearch } from '../ai/dagsearch.ts';
 import type { Placement } from '../ai/types.ts';
 import { getMatrix } from '../ai/pure.ts';
+
+export type SearchEngine = 'dag' | 'beam';
 
 export interface HeadlessOptions {
   pps: number;
@@ -11,6 +14,9 @@ export interface HeadlessOptions {
   timeLimitMs: number;
   maxPieces: number;
   realtime: boolean;
+  search: SearchEngine;
+  nodeBudget: number;
+  pruneHoles: boolean;
   onPiece?: (info: {
     piece: number;
     attack: number;
@@ -44,7 +50,7 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-function applyPlacement(core: GameCore, p: Placement): boolean {
+export function applyPlacement(core: GameCore, p: Placement): boolean {
   if (p.piece !== core.currentMino.type) {
     if (!core.canHold) return false;
     core.hold();
@@ -80,15 +86,37 @@ export function runHeadlessGame(options: HeadlessOptions, seed: number): GameRes
   const frameMs = 1000 / options.pps;
 
   while (core.state === 'PLAYING' && core.piecesPlaced < options.maxPieces) {
-    const state = buildSearchState(core);
-    const best = beamSearch(state, options.beamWidth, options.maxDepth, undefined, undefined, options.timeLimitMs);
-
+    let plan: Placement[] = [];
     const searchStart = Date.now();
-    let ok = false;
-    if (best.placements.length > 0) {
-      ok = applyPlacement(core, best.placements[0]);
+
+    if (options.search === 'dag') {
+      const result = dagSearch(
+        buildSearchState(core).board,
+        core.currentMino.type,
+        core.nextQueue.slice(),
+        core.holdType,
+        core.canHold,
+        core.comboCount,
+        core.difficultClearCount,
+        {
+          depth: options.maxDepth,
+          nodeBudget: options.nodeBudget,
+          timeLimitMs: options.timeLimitMs,
+          pruneHoles: options.pruneHoles,
+        },
+      );
+      plan = result.placements;
+    } else {
+      const state = buildSearchState(core);
+      const best = beamSearch(state, options.beamWidth, options.maxDepth, undefined, undefined, options.timeLimitMs);
+      plan = best.placements;
     }
     const thinkTime = Date.now() - searchStart;
+
+    let ok = false;
+    if (plan.length > 0) {
+      ok = applyPlacement(core, plan[0]);
+    }
 
     if (!ok) break; // 配置できる手がない＝詰み
 

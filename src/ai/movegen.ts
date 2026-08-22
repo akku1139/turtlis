@@ -2,119 +2,216 @@ import type { MinoType, MinoState } from '../types.ts';
 import { getMatrix, getPieceCells, spawnX, spawnY } from './pure.ts';
 import { SRSPlusKickTable } from '../kicktable.ts';
 import type { BitBoard } from './bitboard.ts';
+import { BOARD_LO_BITS } from './bitboard.ts';
+import { BOARD_WIDTH, BOARD_TOTAL_HEIGHT } from '../constants.ts';
 import type { Placement } from './types.ts';
 
 const kickTable = new SRSPlusKickTable();
 
-// BFS ノードを数値にパックする
-// 構成ビット: kick(3) | lar(1) | y(6) | x(4) | rot(2)
-// visited 判定には kick ビットを除いた値を使う（元実装と同じ意味合い）
-function packNode(rot: number, x: number, y: number, lar: number, kick: number): number {
-  return (((((rot * 16 + (x + 2)) * 64 + y) * 2 + lar) * 8) + kick);
+/**
+ * cold-clear 方式の衝突マップ。
+ * 回転4種 × x 位置について「各 y に置けるか」の 40bit マスクを持ち、
+ * obstructed(rot, x, y) を O(1) で判定できる。
+ */
+const CM_X_MIN = -2;
+const CM_X_COUNT = 16; // x ∈ [-2, 13]
+
+export class CollisionMaps {
+  lo: Int32Array = new Int32Array(4 * CM_X_COUNT);
+  hi: Int32Array = new Int32Array(4 * CM_X_COUNT);
+  maxDy: Int32Array = new Int32Array(4);
+
+  constructor(board: BitBoard, piece: MinoType) {
+    for (let rot = 0; rot < 4; rot++) {
+      const cells = getPieceCells(piece, rot as MinoState);
+      const idxBase = rot * CM_X_COUNT;
+
+      for (let ci = 0; ci < cells.length; ci += 2) {
+        const dx = cells[ci];
+        const dy = cells[ci + 1];
+        if (dy > this.maxDy[rot]) this.maxDy[rot] = dy;
+        for (let xi = 0; xi < CM_X_COUNT; xi++) {
+          const x = xi + CM_X_MIN;
+          const bx = x + dx;
+          let cLo = 0;
+          let cHi = 0;
+          if (bx < 0 || bx >= BOARD_WIDTH) {
+            cLo = -1; // 壁
+            cHi = 0xff;
+          } else {
+            cLo = board.words[bx * 2];
+            cHi = board.words[bx * 2 + 1];
+          }
+          // bit y = 元列の bit (y+dy)
+          let rLo: number;
+          let rHi: number;
+          if (dy === 0) {
+            rLo = cLo;
+            rHi = cHi;
+          } else if (dy > 0) {
+            rLo = (cLo >>> dy) | (cHi << (BOARD_LO_BITS - dy));
+            rHi = cHi >>> dy;
+          } else {
+            const k = -dy;
+            rLo = cLo << k;
+            rHi = ((cHi << k) | (cLo >>> (BOARD_LO_BITS - k))) & 0xff;
+          }
+          this.lo[idxBase + xi] |= rLo;
+          this.hi[idxBase + xi] |= rHi;
+        }
+      }
+
+      // y + maxDy >= BOARD_TOTAL_HEIGHT は床下衝突として埋める
+      const fillMask = (0xff << Math.max(0, BOARD_TOTAL_HEIGHT - this.maxDy[rot] - BOARD_LO_BITS)) & 0xff;
+      if (fillMask) {
+        for (let xi = 0; xi < CM_X_COUNT; xi++) {
+          this.hi[idxBase + xi] |= fillMask;
+        }
+      }
+    }
+  }
+
+  obstructed(rot: number, x: number, y: number): boolean {
+    if (y < 0 || y >= BOARD_TOTAL_HEIGHT) return true;
+    const xi = x - CM_X_MIN;
+    if (xi < 0 || xi >= CM_X_COUNT) return true;
+    const idx = rot * CM_X_COUNT + xi;
+    if (y < BOARD_LO_BITS) {
+      return (this.lo[idx] & (1 << y)) !== 0;
+    }
+    return (this.hi[idx] & (1 << (y - BOARD_LO_BITS))) !== 0;
+  }
 }
 
-function nodeKey(packed: number): number {
-  return packed & ~7; // kick ビットを除く
+interface WorkPos {
+  rot: number;
+  x: number;
+  y: number;
+  lar: boolean;
+  kick: number;
 }
 
-function dropPiece(board: BitBoard, cells: Int8Array, x: number, y: number): number {
-  while (!board.collidesCells(cells, x, y + 1)) y++;
-  return y;
+function maxHeightOf(board: BitBoard): number {
+  let maxH = 0;
+  for (let x = 0; x < BOARD_WIDTH; x++) {
+    const lo = board.words[x * 2];
+    const hi = board.words[x * 2 + 1];
+    let topY = BOARD_TOTAL_HEIGHT;
+    if (lo !== 0) topY = 31 - Math.clz32(lo & -lo);
+    else if (hi !== 0) topY = BOARD_LO_BITS + (31 - Math.clz32(hi & -hi));
+    const h = BOARD_TOTAL_HEIGHT - topY;
+    if (h > maxH) maxH = h;
+  }
+  return maxH;
 }
 
 export function generatePlacements(board: BitBoard, piece: MinoType): Placement[] {
   const result = new Map<number, Placement>();
-  const visited = new Set<number>();
-  const queue: number[] = [];
+  const cm = new CollisionMaps(board, piece);
 
+  const addPlacement = (
+    rot: number, x: number, y: number, lar: boolean, kick: number,
+  ): void => {
+    const key = (((((rot * 16 + (x + 2)) * 64 + y) * 2 + (lar ? 1 : 0)) * 8) + kick);
+    if (result.has(key)) return;
+    result.set(key, {
+      piece,
+      rotation: rot as MinoState,
+      x,
+      y,
+      matrix: getMatrix(piece, rot as MinoState),
+      lastActionWasRotation: lar,
+      lastKickIndex: kick,
+    });
+  };
+
+  // スポーン位置（詰み時は上へ退避）
   const startX = spawnX(piece);
-  let startY = spawnY(piece, 0);
-  const startMatrix = getMatrix(piece, 0);
-
-  // スポーン位置が埋まっていたら上へ退避
-  if (board.collides(startMatrix, startX, startY)) {
-    let found = false;
-    for (let y = startY - 1; y >= 0; y--) {
-      if (!board.collides(startMatrix, startX, y)) {
-        startY = y;
-        found = true;
-        break;
+  let spawnTop = spawnY(piece, 0);
+  {
+    const cells0 = getPieceCells(piece, 0);
+    if (board.collidesCells(cells0, startX, spawnTop)) {
+      let found = false;
+      for (let y = spawnTop - 1; y >= 0; y--) {
+        if (!board.collidesCells(cells0, startX, y)) {
+          spawnTop = y;
+          found = true;
+          break;
+        }
       }
+      if (!found) return [];
     }
-    if (!found) return [];
   }
 
-  queue.push(packNode(0, startX, startY, 0, 0));
+  // 高速パス: スタックが低ければ「着地位置から展開」する cc2 fast_mode 相当
+  const fastMode = maxHeightOf(board) <= 20;
 
-  for (let qi = 0; qi < queue.length; qi++) {
-    const packed = queue[qi];
-    const vkey = nodeKey(packed);
-    if (visited.has(vkey)) continue;
-    visited.add(vkey);
+  const visited = new Set<number>();
+  const work: WorkPos[] = [];
 
-    const sRot = ((packed >>> 14) & 3) as MinoState;
-    const sX = ((packed >>> 10) & 15) - 2;
-    const sY = (packed >>> 4) & 63;
-    const sLAR = ((packed >>> 3) & 1) === 1;
-    const sKick = packed & 7;
+  const dropFrom = (rot: number, x: number, y: number): number => {
+    let yy = y;
+    while (!cm.obstructed(rot, x, yy + 1)) yy++;
+    return yy;
+  };
 
-    const cells = getPieceCells(piece, sRot);
-    const grounded = board.collidesCells(cells, sX, sY + 1);
+  const pushWork = (rot: number, x: number, y: number, lar: boolean): void => {
+    // lar も含めて訪問管理（回転状態の違いでロック結果が変わるため）
+    const key = ((rot * 16 + (x + 2)) * 64 + y) * 2 + (lar ? 1 : 0);
+    if (visited.has(key)) return;
+    visited.add(key);
+    work.push({ rot, x, y, lar, kick: 0 });
+  };
 
-    // 接地しているならロック候補
+  if (fastMode) {
+    // すべての (rot, x) について着地させ、そこから移動/回転を展開
+    for (let rot = 0; rot < 4; rot++) {
+      for (let x = CM_X_MIN; x < CM_X_MIN + CM_X_COUNT; x++) {
+        if (cm.obstructed(rot, x, spawnTop)) continue;
+        const ly = dropFrom(rot, x, spawnTop);
+        pushWork(rot, x, ly, false);
+        addPlacement(rot, x, ly, false, 0);
+      }
+    }
+  } else {
+    // 完全パス: スポーンから全 y を BFS（ソフトドロップ相当の移動を含む）
+    pushWork(0, startX, spawnTop, false);
+  }
+
+  for (let wi = 0; wi < work.length; wi++) {
+    const { rot, x, y, lar, kick } = work[wi];
+
+    const grounded = cm.obstructed(rot, x, y + 1);
     if (grounded) {
-      const key = packed;
-      if (!result.has(key)) {
-        result.set(key, {
-          piece,
-          rotation: sRot,
-          x: sX,
-          y: sY,
-          matrix: getMatrix(piece, sRot),
-          lastActionWasRotation: sLAR,
-          lastKickIndex: sKick,
-        });
-      }
+      addPlacement(rot, x, y, lar, kick);
     } else {
-      // ハードドロップによるロック候補（落下すると回転状態は解除）
-      const y = dropPiece(board, cells, sX, sY);
-      const hdKey = packNode(sRot, sX, y, 0, 0);
-      if (!result.has(hdKey)) {
-        result.set(hdKey, {
-          piece,
-          rotation: sRot,
-          x: sX,
-          y,
-          matrix: getMatrix(piece, sRot),
-          lastActionWasRotation: false,
-          lastKickIndex: 0,
-        });
-      }
-
-      // 1セル下へ移動（ソフトドロップ相当）
-      queue.push(packNode(sRot, sX, sY + 1, 0, 0));
+      const ly = dropFrom(rot, x, y);
+      addPlacement(rot, x, ly, false, 0);
+      // 着地点からさらに展開を続ける（回転→ドロップ→回転などの連鎖のため）
+      pushWork(rot, x, ly, false);
+      // 中間 y への移動（ソフトドロップ途中の操作を再現）
+      pushWork(rot, x, y + 1, false);
     }
 
-    // 左右移動
-    for (let dx = -1; dx <= 1; dx += 2) {
-      const nx = sX + dx;
-      if (!board.collidesCells(cells, nx, sY)) {
-        queue.push(packNode(sRot, nx, sY, 0, 0));
-      }
-    }
+    // 左右移動（現在の y で）
+    if (!cm.obstructed(rot, x - 1, y)) pushWork(rot, x - 1, y, false);
+    if (!cm.obstructed(rot, x + 1, y)) pushWork(rot, x + 1, y, false);
 
-    // 回転（Oミノ以外）
+    // 回転
     if (piece !== 'O') {
-      for (const dir of [1, 3, 2] as const) { // CW, CCW, 180
-        const toRot = (sRot + dir) % 4 as MinoState;
-        const kicks = kickTable.getKicks(piece, sRot, toRot);
-        const rotCells = getPieceCells(piece, toRot);
+      for (const dir of [1, 3, 2] as const) {
+        const toRot = (rot + dir) % 4;
+        const kicks = kickTable.getKicks(piece, rot as MinoState, toRot as MinoState);
         for (let i = 0; i < kicks.length; i++) {
-          const testX = sX + kicks[i][0];
-          const testY = sY - kicks[i][1];
-          if (!board.collidesCells(rotCells, testX, testY)) {
-            queue.push(packNode(toRot, testX, testY, 1, i));
-            break; // この回転方向で最初に成功したキックのみ
+          const testX = x + kicks[i][0];
+          const testY = y - kicks[i][1];
+          if (!cm.obstructed(toRot, testX, testY)) {
+            // 回転直後に接地していればキック番号を保持したロック候補
+            if (cm.obstructed(toRot, testX, testY + 1)) {
+              addPlacement(toRot, testX, testY, true, i);
+            }
+            pushWork(toRot, testX, testY, true);
+            break;
           }
         }
       }

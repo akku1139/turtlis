@@ -1,5 +1,6 @@
 import { runHeadlessGame } from './runner.ts';
 import type { GameResult } from './runner.ts';
+import type { SearchEngine } from './runner.ts';
 
 interface Args {
   games: number;
@@ -11,6 +12,9 @@ interface Args {
   maxPieces: number;
   realtime: boolean;
   verbose: boolean;
+  search: SearchEngine;
+  nodes: number;
+  pruneHoles: boolean;
 }
 
 function parseArgs(): Args {
@@ -21,7 +25,14 @@ function parseArgs(): Args {
     const v = parseFloat(args[i + 1]);
     return Number.isFinite(v) ? v : def;
   };
+  const getStr = (name: string, def: string): string => {
+    const i = args.indexOf(`--${name}`);
+    if (i === -1 || i + 1 >= args.length) return def;
+    return args[i + 1];
+  };
   const has = (name: string): boolean => args.includes(`--${name}`);
+
+  const search = (getStr('search', 'dag') === 'beam' ? 'beam' : 'dag') as SearchEngine;
 
   return {
     games: Math.max(1, Math.floor(get('games', 10))),
@@ -33,6 +44,9 @@ function parseArgs(): Args {
     maxPieces: Math.max(1, Math.floor(get('max-pieces', 500))),
     realtime: has('realtime'),
     verbose: has('verbose'),
+    search,
+    nodes: Math.max(100, Math.floor(get('nodes', 12000))),
+    pruneHoles: has('prune-holes'),
   };
 }
 
@@ -50,7 +64,7 @@ function main() {
   const args = parseArgs();
 
   console.log(`turtlis headless benchmark`);
-  console.log(`games=${args.games} pps=${args.pps} beam=${args.beam} depth=${args.depth} timeLimit=${args.timeMs}ms maxPieces=${args.maxPieces}${args.realtime ? ' [realtime]' : ''}`);
+  console.log(`search=${args.search} games=${args.games} pps=${args.pps} beam=${args.beam} depth=${args.depth} timeLimit=${args.timeMs}ms nodes=${args.nodes} maxPieces=${args.maxPieces}${args.realtime ? ' [realtime]' : ''}`);
   console.log('');
 
   const results: GameResult[] = [];
@@ -66,6 +80,9 @@ function main() {
         timeLimitMs: args.timeMs,
         maxPieces: args.maxPieces,
         realtime: args.realtime,
+        search: args.search,
+        nodeBudget: args.nodes,
+        pruneHoles: args.pruneHoles,
       },
       seed,
     );
