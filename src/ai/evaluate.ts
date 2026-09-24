@@ -47,7 +47,7 @@ export const DEFAULT_REWARD_WEIGHTS = {
   /** Tミノを使ったのにスピンが絡まない場合のペナルティ */
   wastedT: -1.5,
   /** 実攻撃値への係数 */
-  attack: 0,
+  attack: 2,
 };
 
 
