@@ -434,34 +434,30 @@ export function dagSearch(
   function backpropFrom(start: DagNode): void {
     let frontier: DagNode[] = [start];
     while (frontier.length > 0) {
-      const nextFrontier: DagNode[] = [];
-      const processed = new Set<DagNode>();
+      const nextParents = new Set<DagNode>();
       for (const changed of frontier) {
         if (changed.parents === null) continue;
         for (const parent of changed.parents) {
-          if (processed.has(parent)) continue;
-          processed.add(parent);
           if (parent.children === null) continue;
-
-          for (const c of parent.children) {
-            if (c.node === changed) {
-              c.cachedEval = changed.eval + c.reward;
+          let best = -Infinity;
+          for (const edge of parent.children) {
+            const value = edge.node.eval + edge.reward;
+            if (edge.cachedEval !== value) {
+              edge.cachedEval = value;
+            }
+            if (value > best) {
+              best = value;
             }
           }
-
-          let best = -Infinity;
-          for (const c of parent.children) {
-            if (c.cachedEval > best) best = c.cachedEval;
-          }
-          if (best > parent.eval + 1e-9) {
+          if (best !== parent.eval) {
             parent.eval = best;
             if (parent.parents !== null && parent.parents.length > 0) {
-              nextFrontier.push(parent);
+              nextParents.add(parent);
             }
           }
         }
       }
-      frontier = nextFrontier;
+      frontier = [...nextParents];
     }
   }
 }
